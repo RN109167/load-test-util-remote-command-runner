@@ -1,7 +1,7 @@
 const form = document.getElementById('run-form');
 const formError = document.getElementById('form-error');
 const resultsBody = document.getElementById('results-body');
-// Table-only UI preview; no backend calls yet
+// Integrated UI with backend: triggers jobs and polls status
 const btnClean = document.getElementById('btn-clean');
 const btnStart = document.getElementById('btn-start');
 const btnStop = document.getElementById('btn-stop');
@@ -89,7 +89,7 @@ function updateToolbarState() {
   }
 }
 
-function triggerCommand(label, command) {
+async function triggerCommand(label, command) {
   formError.classList.add('hidden');
   const ips = sanitizeIPs(ipsTextarea.value);
   if (!validateAllIPs(ips)) {
@@ -100,8 +100,7 @@ function triggerCommand(label, command) {
   }
   const confirmed = window.confirm(`Run "${label}" (\`${command}\`) on ${ips.length} host(s)?`);
   if (!confirmed) return;
-  currentIPs = ips;
-  renderTable(currentIPs, { statuses: Object.fromEntries(ips.map(ip => [ip, 'pending'])) });
+  await startJob(ips, command);
 }
 
 updateToolbarState();
@@ -120,7 +119,7 @@ form.addEventListener('submit', async (e) => {
 
   const ips = sanitizeIPs(ipsTextarea.value);
   const command = (commandInput.value || '').trim();
-  // No credentials or port needed in UI-only phase
+  // Use backend to execute
 
   if (!ips.length) {
     formError.textContent = 'Please provide at least one IP address.';
@@ -133,11 +132,65 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
-  currentIPs = ips;
-  renderTable(currentIPs, { statuses: Object.fromEntries(ips.map(ip => [ip, 'queued'])) });
-
-  // Render a local preview of the intended execution plan
-  const statuses = Object.fromEntries(ips.map(ip => [ip, 'pending']));
-  renderTable(currentIPs, { statuses });
-  // Export removed; just render table
+  await startJob(ips, command);
 });
+
+async function startJob(ips, command) {
+  setDisabledState(true);
+  try {
+    const res = await fetch('/api/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // Request synchronous execution to get immediate output and avoid polling
+      body: JSON.stringify({ ips, command, mode: 'sync' }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      formError.textContent = (data.errors && data.errors.join('; ')) || data.error || 'Request failed';
+      formError.classList.remove('hidden');
+      setDisabledState(false);
+      return;
+    }
+    currentIPs = ips;
+    if (data.results) {
+      renderTable(currentIPs, { statuses: data.statuses || {}, results: data.results, completed: data.completed });
+    } else if (data.jobId) {
+      // Fallback to async job mode
+      renderTable(currentIPs, { statuses: Object.fromEntries(ips.map(ip => [ip, 'queued'])) });
+      await pollJob(data.jobId);
+    }
+  } catch (err) {
+    formError.textContent = 'Network error: ' + err.message;
+    formError.classList.remove('hidden');
+  } finally {
+    setDisabledState(false);
+  }
+}
+
+function setDisabledState(disabled) {
+  if (runBtn) runBtn.disabled = disabled;
+  for (const b of [btnClean, btnStart, btnStop, btnRestart]) {
+    if (b) b.disabled = disabled;
+  }
+  if (!disabled) {
+    // Re-apply validation gating when re-enabling controls
+    updateToolbarState();
+  }
+}
+
+async function pollJob(jobId) {
+  let completed = false;
+  while (!completed) {
+    const res = await fetch(`/api/job/${jobId}`);
+    const data = await res.json();
+    if (!data.ok) {
+      formError.textContent = data.error || 'Unknown error';
+      formError.classList.remove('hidden');
+      break;
+    }
+    const job = data.job;
+    renderTable(currentIPs, job);
+    completed = !!job.completed;
+    if (!completed) await new Promise(r => setTimeout(r, 1000));
+  }
+}

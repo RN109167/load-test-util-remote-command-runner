@@ -1,6 +1,7 @@
 import paramiko
 import socket
 import io
+import shlex
 from typing import Optional
 
 
@@ -41,12 +42,15 @@ def execute_command_on_host(
             timeout=timeout,
         )
 
-        stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
+        # Prefer bash login semantics so env (PATH, JAVA_HOME) matches interactive sessions
+        inner = f"cd \"$HOME\" && {command}"
+        wrapped_cmd = f"/bin/bash -lc {shlex.quote(inner)}"
+        stdin, stdout, stderr = client.exec_command(wrapped_cmd, timeout=timeout)
         out = stdout.read().decode("utf-8", errors="replace")
         err = stderr.read().decode("utf-8", errors="replace")
         exit_status = stdout.channel.recv_exit_status()
         return {
-            "ok": True,
+            "ok": (exit_status == 0),
             "stdout": out,
             "stderr": err,
             "exit_code": exit_status,
