@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Environments
+.venv/
+.env
+
+# OS files
+.DS_Store
+
+# Flask/coverage/logs (future)
+instance/
+*.log
+coverage/

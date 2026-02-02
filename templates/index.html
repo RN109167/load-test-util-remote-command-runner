@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Remote Command Runner</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Remote Command Runner</h1>
+    <p>Run a Linux command over SSH on multiple hosts.</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Inputs</h2>
+      <form id="run-form">
+        <div class="grid">
+          <label>
+            IP Addresses (one per line)
+            <textarea id="ips" rows="6" placeholder="192.168.1.10\n192.168.1.11"></textarea>
+          </label>
+          <label>
+            Command
+            <input type="text" id="command" placeholder="uname -a" />
+          </label>
+          <label>
+            Username
+            <input type="text" id="username" placeholder="root" />
+          </label>
+          <label>
+            Port
+            <input type="number" id="port" value="22" min="1" max="65535" />
+          </label>
+        </div>
+
+        <fieldset class="auth">
+          <legend>Authentication</legend>
+          <label>
+            <input type="radio" name="auth" value="password" checked /> Password
+          </label>
+          <label>
+            <input type="radio" name="auth" value="key" /> Private Key (paste)
+          </label>
+
+          <div id="password-auth">
+            <label>
+              Password
+              <input type="password" id="password" placeholder="••••••" />
+            </label>
+          </div>
+
+          <div id="key-auth" class="hidden">
+            <label>
+              Private Key
+              <textarea id="privateKey" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"></textarea>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <button type="submit" id="run-btn">Run Command</button>
+        </div>
+        <div id="form-error" class="error hidden"></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Results</h2>
+      <div id="results-controls" class="hidden">
+        <button id="export-btn">Export Payload JSON</button>
+      </div>
+      <table id="results-table">
+        <thead>
+          <tr>
+            <th>IP</th>
+            <th>Status</th>
+            <th>Exit Code</th>
+            <th>Stdout</th>
+            <th>Stderr</th>
+          </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    <small>Ensure you trust the target hosts. Manage known hosts in production.</small>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

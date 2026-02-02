@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Remote Command Runner</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+<body>
+  <header>
+    <h1>Remote Command Runner</h1>
+    <p>Provide IPs; credentials are fixed, command defaults to uname -a.</p>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Inputs</h2>
+      <form id="run-form">
+        <h3 class="toolbar-title">Shortcut Hub</h3>
+        <div class="toolbar">
+          <button id="btn-clean" disabled>Clean Concentrators</button>
+          <button id="btn-start" disabled>Start Load Injector</button>
+          <button id="btn-stop" disabled>Stop Load Injector</button>
+          <button id="btn-restart" disabled>Restart Load Injector</button>
+        </div>
+        <div class="grid">
+          <label>
+            IP Addresses (one per line)
+            <textarea id="ips" rows="6" placeholder="192.168.1.10
+192.168.1.11"></textarea>
+          </label>
+          <label>
+            Command to run
+            <input type="text" id="command" placeholder="sh script.sh" />
+          </label>
+        </div>
+        <div class="actions">
+          <button type="submit" id="run-btn" disabled>Run</button>
+        </div>
+        <div id="form-error" class="error hidden"></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Results</h2>
+      <table id="results-table">
+        <thead>
+          <tr>
+            <th>IP</th>
+            <th>Status</th>
+            <th>Exit Code</th>
+            <th>Stdout</th>
+            <th>Stderr</th>
+          </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    <small>Ensure you trust the target hosts. Manage known hosts in production.</small>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
