@@ -132,6 +132,15 @@ fileInput && fileInput.addEventListener('change', async () => {
   }
   const file = fileInput.files && fileInput.files[0];
   if (!file) return;
+  // Confirm before distributing file across hosts
+  const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+  const large = file.size > (1024 * 1024 * 1024); // >1 GB
+  const msg = `Upload '${file.name}' (${sizeMB} MB) to ${ips.length} host(s) at ~/${file.name}.\nExisting files will be overwritten. Proceed?` + (large ? `\n\nWarning: Large file; uploads may take time.` : '');
+  const proceed = window.confirm(msg);
+  if (!proceed) {
+    fileInput.value = '';
+    return;
+  }
   setDisabledState(true);
   try {
     const formData = new FormData();

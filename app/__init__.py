@@ -16,6 +16,13 @@ def create_app():
         MAX_CONTENT_LENGTH=int(os.environ.get("MAX_CONTENT_LENGTH", str(2 * 1024 * 1024 * 1024))),
     )
 
+    # Warn if SECRET_KEY is not set (sessions/CSRF not in use currently)
+    if not app.config.get("SECRET_KEY"):
+        try:
+            print("WARNING: SECRET_KEY is not set; set it via env for production.")
+        except Exception:
+            pass
+
     # Ensure instance/uploads exists for temporary file storage
     uploads_root = os.path.join(app.instance_path, "uploads")
     try:

@@ -52,7 +52,7 @@ def api_execute():
     if errors:
         return jsonify({"ok": False, "errors": errors}), 400
 
-    max_workers = int(current_app.config.get("MAX_PARALLEL", 10))
+    max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
     timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 20))
     username = current_app.config.get("SSH_USERNAME", "user")
     password = current_app.config.get("SSH_PASSWORD", "palmedia1")
@@ -222,7 +222,7 @@ def api_upload_copy():
     username = current_app.config.get("SSH_USERNAME", "user")
     password = current_app.config.get("SSH_PASSWORD", "palmedia1")
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
-    max_workers = int(current_app.config.get("MAX_PARALLEL", 10))
+    max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
 
     results = {}
     statuses = {}
