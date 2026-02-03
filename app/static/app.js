@@ -2,21 +2,44 @@ const form = document.getElementById('run-form');
 const formError = document.getElementById('form-error');
 const resultsBody = document.getElementById('results-body');
 // Integrated UI with backend: triggers jobs and polls status
-const btnClean = document.getElementById('btn-clean');
-const btnStart = document.getElementById('btn-start');
-const btnStop = document.getElementById('btn-stop');
-const btnUpload = document.getElementById('btn-upload');
-const btnCopyFromVm = document.getElementById('btn-copy-from-vm');
-const btnNcStart = document.getElementById('btn-nc-start');
-const btnNcStop = document.getElementById('btn-nc-stop');
+// Dynamic Shortcut Hub
+const hubEl = document.getElementById('shortcut-hub');
+const actionsEl = document.getElementById('shortcut-actions');
 const ipsTextarea = document.getElementById('ips');
 const commandInput = document.getElementById('command');
 const runBtn = document.getElementById('run-btn');
 
-// Shortcut command constants
-const CLEAN_CONCENTRATORS_CMD = 'echo palmedia1 | sudo -S systemctl stop onelink-concentrator && sudo rm -rf /opt/onelink-concentrator/data/kahadb/*.* && sudo -S systemctl start onelink-concentrator';
-const START_NCONNECTMOCK_CMD = 'sh start-nconnectmock.sh';
-const STOP_NCONNECTMOCK_CMD = 'sh stop-nconnectmock.sh';
+// Shortcut command definitions
+const SHORTCUTS = {
+  Concentrator: {
+    Start: 'echo palmedia1 | sudo -S systemctl start onelink-concentrator',
+    Stop: 'echo palmedia1 | sudo -S systemctl stop onelink-concentrator',
+    Restart: 'echo palmedia1 | sudo -S systemctl restart onelink-concentrator',
+    Clean: 'echo palmedia1 | sudo -S systemctl stop onelink-concentrator && sudo rm -rf /opt/onelink-concentrator/data/kahadb/*.* && sudo -S systemctl start onelink-concentrator',
+  },
+  Appserver: {
+    Start: 'echo palmedia1 | sudo -S systemctl start onelink-appserver',
+    Stop: 'echo palmedia1 | sudo -S systemctl stop onelink-appserver',
+    Restart: 'echo palmedia1 | sudo -S systemctl restart onelink-appserver',
+  },
+  'nConnect-Adapter': {
+    Start: 'echo palmedia1 | sudo -S systemctl start onelink-nconnect',
+    Stop: 'echo palmedia1 | sudo -S systemctl stop onelink-nconnect',
+    Restart: 'echo palmedia1 | sudo -S systemctl restart onelink-nconnect',
+  },
+  Unload: {
+    Start: 'sh start-unload.sh',
+    Stop: 'sh stop-unload.sh',
+  },
+  nConnectMock: {
+    Start: 'sh start-nconnectmock.sh',
+    Stop: 'sh stop-nconnectmock.sh',
+  },
+  'File Operations': ['Copy From VM', 'Upload and Copy Files'],
+};
+
+const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnectMock', 'File Operations'];
+let selectedCategory = null;
 
 let currentIPs = [];
 // No payload export/state needed in UI-only phase
@@ -134,10 +157,7 @@ function renderColumnsTable(rows) {
 function updateToolbarState() {
   const ips = sanitizeIPs(ipsTextarea.value);
   const allValid = validateAllIPs(ips);
-  const disabled = !allValid;
-  for (const b of [btnClean, btnStart, btnStop, btnUpload, btnCopyFromVm, btnNcStart, btnNcStop]) {
-    if (b) b.disabled = disabled;
-  }
+  setActionsDisabled(!allValid);
   // Enable Run only when IPs valid and command non-empty
   const cmdFilled = (commandInput?.value || '').trim().length > 0;
   if (runBtn) runBtn.disabled = !(allValid && cmdFilled);
@@ -169,19 +189,73 @@ updateToolbarState();
 ipsTextarea.addEventListener('input', updateToolbarState);
 commandInput && commandInput.addEventListener('input', updateToolbarState);
 
-btnClean && btnClean.addEventListener('click', () =>
-  triggerCommand('Clean Concentrators', CLEAN_CONCENTRATORS_CMD)
-);
-btnStart && btnStart.addEventListener('click', () => triggerCommand('Start Load Injector', 'sh start.sh'));
-btnStop && btnStop.addEventListener('click', () => triggerCommand('Stop Load Injector', 'sh stop.sh'));
-btnNcStart && btnNcStart.addEventListener('click', () => triggerCommand('Start nconnectmock.', START_NCONNECTMOCK_CMD));
-btnNcStop && btnNcStop.addEventListener('click', () => triggerCommand('Stop nconnectmock.', STOP_NCONNECTMOCK_CMD));
+// Render category buttons
+function renderCategories() {
+  hubEl.innerHTML = '';
+  CATEGORY_ORDER.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.textContent = cat;
+    btn.type = 'button';
+    btn.className = 'hub-btn';
+    if (selectedCategory === cat) btn.classList.add('selected');
+    btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleCategory(cat); });
+    hubEl.appendChild(btn);
+  });
+}
+
+function toggleCategory(cat) {
+  if (selectedCategory === cat) {
+    selectedCategory = null;
+    actionsEl.innerHTML = '';
+    renderCategories();
+    return;
+  }
+  selectedCategory = cat;
+  renderCategories();
+  renderActions(cat);
+}
+
+function renderActions(cat) {
+  actionsEl.innerHTML = '';
+  const spec = SHORTCUTS[cat];
+  const labels = Array.isArray(spec) ? spec : Object.keys(spec);
+  labels.forEach(label => {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.type = 'button';
+    // Disable until IPs valid
+    const ips = sanitizeIPs(ipsTextarea.value);
+    btn.disabled = !validateAllIPs(ips);
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (cat === 'File Operations') {
+        if (label === 'Copy From VM') {
+          const copyModal = document.getElementById('copy-modal');
+          const copyError = document.getElementById('copy-error');
+          if (copyError) copyError.classList.add('hidden');
+          if (copyModal) copyModal.classList.remove('hidden');
+        } else if (label === 'Upload and Copy Files') {
+          const fileInput = document.getElementById('file-input');
+          if (fileInput) fileInput.click();
+        }
+        return;
+      }
+      const command = SHORTCUTS[cat][label];
+      await triggerCommand(`${label} ${cat}`, command);
+    });
+    actionsEl.appendChild(btn);
+  });
+}
+
+function setActionsDisabled(disabled) {
+  actionsEl.querySelectorAll('button').forEach(b => b.disabled = disabled);
+}
+
+renderCategories();
 
 // Upload & copy flow
 const fileInput = document.getElementById('file-input');
-btnUpload && btnUpload.addEventListener('click', () => {
-  fileInput && fileInput.click();
-});
 
 fileInput && fileInput.addEventListener('change', async () => {
   formError.classList.add('hidden');
@@ -249,10 +323,7 @@ const srcPassInput = document.getElementById('src-pass');
 const srcPortInput = document.getElementById('src-port');
 const srcPathInput = document.getElementById('src-path');
 
-btnCopyFromVm && btnCopyFromVm.addEventListener('click', () => {
-  copyError.classList.add('hidden');
-  copyModal.classList.remove('hidden');
-});
+// Opening the modal is now triggered by the Shortcut Hub "Copy From VM" button
 
 copyCancelBtn && copyCancelBtn.addEventListener('click', () => {
   copyModal.classList.add('hidden');
@@ -376,9 +447,8 @@ async function startJob(ips, command) {
 
 function setDisabledState(disabled) {
   if (runBtn) runBtn.disabled = disabled;
-  for (const b of [btnClean, btnStart, btnStop, btnUpload, btnCopyFromVm, btnNcStart, btnNcStop]) {
-    if (b) b.disabled = disabled;
-  }
+  // Disable/enable currently rendered sub-action buttons
+  actionsEl.querySelectorAll('button').forEach(b => { b.disabled = disabled; });
   if (!disabled) {
     // Re-apply validation gating when re-enabling controls
     updateToolbarState();
