@@ -44,34 +44,23 @@ python .\main.py
 
 ### Run (Windows CMD)
 ```cmd
-- Python 3.10+
-- Dependencies in [requirements.txt](requirements.txt): Flask, Paramiko
+:: 1) Create and activate a virtual environment
+py -m venv .venv
+call .venv\Scripts\activate.bat
 
-## Configuration
-The app is configured via environment variables (no credentials in the UI):
-
-- `SSH_USERNAME` (default: `user`)
-- `SSH_PASSWORD` (default: `palmedia1`)
-- `SSH_DEFAULT_PORT` (default: `22`)
-- `SSH_TIMEOUT_SECONDS` (default: `20`)
-- `MAX_PARALLEL` (default: `30`) — concurrency for SSH and uploads
-- `PORT` (default: `5050`) — web server port
-- `SECRET_KEY` — set in production for session-related security (optional here)
-
-Example:
-```bash
-```
-python3 -m venv .venv
-. .venv/bin/activate
+:: 2) Install dependencies
 pip install -r requirements.txt
 
-SSH_USERNAME="user" \
-SSH_PASSWORD="palmedia1" \
-MAX_PARALLEL=30 \
-PORT=5050 \
-.venv/bin/python main.py
+:: 3) Configure environment (adjust as needed)
+set SSH_USERNAME=user
+set SSH_PASSWORD=palmedia1
+set MAX_PARALLEL=30
+set PORT=5050
+
+:: 4) Start the server
+python main.py
+:: Open http://127.0.0.1:5050
 ```
-Open http://127.0.0.1:5050
 
 ## How it works
 - Backend runs commands via SSH using `/bin/bash -lc 'cd "$HOME" && <command>'`.
@@ -79,13 +68,6 @@ Open http://127.0.0.1:5050
 - In async mode (default), the server returns a `jobId` and the UI (or client) can poll `/api/job/<id>` until `completed`.
 - In sync mode (opt-in), the server returns a single response with per-IP `stdout`, `stderr`, and `exit_code`.
  - Upload and Copy uses SFTP (`paramiko`) to write files to `/home/<username>/<filename>` and sets permissions to `0644`.
-
-## Notes on scripts and logging
-- The utility does not add redirection; your scripts control logging.
-- For background tasks, ensure your script captures both streams, e.g.:
-  - Truncate then log: `> Output.log 2>&1`
-  - Append and log: `>> Output.log 2>&1`
-  - Optionally detach stdin: `< /dev/null` when using `nohup ... &`
 
 ## Project Structure
 ```
