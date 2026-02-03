@@ -22,6 +22,11 @@ button:disabled { background: #334155; cursor: not-allowed; }
 #results-table { width: 100%; border-collapse: collapse; margin-top: 12px; table-layout: fixed; }
 #results-table th, #results-table td { border: 1px solid #334155; padding: 8px; vertical-align: top; word-wrap: break-word; }
 #results-table th { background: #0b1220; }
+.stdout-table { width: max-content; border-collapse: collapse; font-size: 12px; table-layout: auto; }
+.stdout-table th, .stdout-table td { border: 1px solid #334155; padding: 6px; white-space: nowrap; min-width: 110px; }
+.stdout-wrap { max-width: 100%; overflow-x: auto; }
+.stdout-wrap pre { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+.stdout-table { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
 
 footer { padding: 24px; color: #94a3b8; }
 

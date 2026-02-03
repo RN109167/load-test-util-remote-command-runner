@@ -57,10 +57,18 @@ function renderTable(ips, job) {
     tdExit.textContent = res?.exit_code ?? '';
 
     const tdOut = document.createElement('td');
-    tdOut.textContent = res?.stdout ?? '';
+    const stdoutNode = renderStdout(res?.stdout ?? '');
+    const outWrap = document.createElement('div');
+    outWrap.className = 'stdout-wrap';
+    outWrap.appendChild(stdoutNode);
+    tdOut.appendChild(outWrap);
 
     const tdErr = document.createElement('td');
-    tdErr.textContent = res?.stderr ?? '';
+    const stderrNode = renderStdout(res?.stderr ?? '');
+    const errWrap = document.createElement('div');
+    errWrap.className = 'stdout-wrap';
+    errWrap.appendChild(stderrNode);
+    tdErr.appendChild(errWrap);
 
     row.appendChild(tdIP);
     row.appendChild(tdStatus);
@@ -70,6 +78,54 @@ function renderTable(ips, job) {
 
     resultsBody.appendChild(row);
   });
+}
+
+// Generic stdout formatter: try to render columns when output has 2+ space or tab-separated fields
+function renderStdout(text) {
+  const rows = parseColumns(text);
+  if (rows.length > 0) {
+    return renderColumnsTable(rows);
+  }
+  const pre = document.createElement('pre');
+  pre.textContent = text;
+  return pre;
+}
+
+function parseColumns(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim());
+  const rows = [];
+  for (const line of lines) {
+    if (!line) continue;
+    // Split on 2+ spaces or tabs to preserve tokens with single spaces
+    const cols = line.split(/\s{2,}|\t+/).map(c => c.trim()).filter(c => c.length > 0);
+    if (cols.length >= 2) rows.push(cols);
+  }
+  if (rows.length === 0) return [];
+  // Normalize to a consistent column count by padding to the max length
+  const maxCols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  return rows.map(r => {
+    if (r.length < maxCols) {
+      return r.concat(Array(maxCols - r.length).fill(''));
+    }
+    return r;
+  });
+}
+
+function renderColumnsTable(rows) {
+  const table = document.createElement('table');
+  table.className = 'stdout-table';
+  const tbody = document.createElement('tbody');
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    for (const c of r) {
+      const td = document.createElement('td');
+      td.textContent = c;
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  return table;
 }
 
 function updateToolbarState() {
