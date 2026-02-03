@@ -12,6 +12,9 @@ const ipsTextarea = document.getElementById('ips');
 const commandInput = document.getElementById('command');
 const runBtn = document.getElementById('run-btn');
 
+// Shortcut command constants
+const CLEAN_CONCENTRATORS_CMD = 'echo palmedia1 | sudo -S systemctl stop onelink-concentrator && sudo rm -rf /opt/onelink-concentrator/data/kahadb/*.* && sudo -S systemctl start onelink-concentrator';
+
 let currentIPs = [];
 // No payload export/state needed in UI-only phase
 
@@ -98,7 +101,7 @@ async function triggerCommand(label, command) {
     updateToolbarState();
     return;
   }
-  const confirmed = window.confirm(`Run "${label}" (\`${command}\`) on ${ips.length} host(s)?`);
+  const confirmed = window.confirm(`Run "${label}" on ${ips.length} host(s)?`);
   if (!confirmed) return;
   await startJob(ips, command);
 }
@@ -107,7 +110,9 @@ updateToolbarState();
 ipsTextarea.addEventListener('input', updateToolbarState);
 commandInput && commandInput.addEventListener('input', updateToolbarState);
 
-btnClean && btnClean.addEventListener('click', () => triggerCommand('Clean Concentrators', 'sh clean.sh'));
+btnClean && btnClean.addEventListener('click', () =>
+  triggerCommand('Clean Concentrators', CLEAN_CONCENTRATORS_CMD)
+);
 btnStart && btnStart.addEventListener('click', () => triggerCommand('Start Load Injector', 'sh start.sh'));
 btnStop && btnStop.addEventListener('click', () => triggerCommand('Stop Load Injector', 'sh stop.sh'));
 btnRestart && btnRestart.addEventListener('click', () => triggerCommand('Restart Load Injector', 'sh restart.sh'));
