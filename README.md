@@ -2,21 +2,50 @@
 
 Flask + Vanilla JS tool to run shell commands across multiple VMs via SSH and show per-host results.
 
-## Features
-- Strict IPv4 input validation; clear error messages for invalid IPs.
-- Command input with a `Run` button that enables only when inputs are valid.
-- Shortcut Hub buttons:
-  - Clean Concentrators → `sh clean.sh`
-  - Start Load Injector → `sh start.sh`
-  - Stop Load Injector → `sh stop.sh`
-  - Restart Load Injector → `sh restart.sh`
-- Immediate results mode (default): executes across all IPs and returns stdout, stderr, and exit codes without polling.
-- Optional async mode (fallback): creates a job and exposes `/api/job/<id>` for polling.
- - Upload and Copy Files: upload any file (up to 2GB, configurable) and distribute it to all hosts’ home directory, overwriting if present.
+### Run (macOS)
+```bash
+# 1) Create and activate a virtual environment
+python3 -m venv .venv
+. .venv/bin/activate
 
-## Requirements
+# 2) Install dependencies
+pip install -r requirements.txt
+
+# 3) Configure environment (adjust as needed)
+export SSH_USERNAME="user"
+export SSH_PASSWORD="palmedia1"
+export MAX_PARALLEL=30
+export PORT=5050
+
+# 4) Start the server
+python main.py
+# Open http://127.0.0.1:5050
+```
+
+### Run (Windows PowerShell)
+```powershell
+# 1) Create and activate a virtual environment
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# 2) Install dependencies
+pip install -r requirements.txt
+
+# 3) Configure environment (adjust as needed)
+$env:SSH_USERNAME = "user"
+$env:SSH_PASSWORD = "palmedia1"
+$env:MAX_PARALLEL = 30
+$env:PORT = 5050
+
+# 4) Start the server
+python .\main.py
+# Open http://127.0.0.1:5050
+```
+
+### Run (Windows CMD)
+```cmd
 - Python 3.10+
-- `Flask`, `paramiko` (see `requirements.txt`)
+- Dependencies in [requirements.txt](requirements.txt): Flask, Paramiko
 
 ## Configuration
 The app is configured via environment variables (no credentials in the UI):
@@ -31,6 +60,7 @@ The app is configured via environment variables (no credentials in the UI):
 
 Example:
 ```bash
+```
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
@@ -46,8 +76,8 @@ Open http://127.0.0.1:5050
 ## How it works
 - Backend runs commands via SSH using `/bin/bash -lc 'cd "$HOME" && <command>'`.
 - Success is based on the remote exit code.
-- In sync mode, the server returns a single response with per-IP `stdout`, `stderr`, and `exit_code`.
-- In async mode, the server returns a `jobId` and the UI (or client) can poll `/api/job/<id>` until `completed`.
+- In async mode (default), the server returns a `jobId` and the UI (or client) can poll `/api/job/<id>` until `completed`.
+- In sync mode (opt-in), the server returns a single response with per-IP `stdout`, `stderr`, and `exit_code`.
  - Upload and Copy uses SFTP (`paramiko`) to write files to `/home/<username>/<filename>` and sets permissions to `0644`.
 
 ## Notes on scripts and logging
@@ -78,7 +108,9 @@ script_util/
 ## Security & Production
 - Known hosts: currently accepts unknown host keys automatically; configure host key management for production.
 - Use a production WSGI server behind a reverse proxy (gunicorn/waitress + nginx) for deployment.
+ - Set `SECRET_KEY` via environment in production.
 
 ## FAQ
 - Can it ssh into 30 VMs? Yes — set `MAX_PARALLEL=30` (subject to network/host limits).
  - Where do uploads go? To `/home/<SSH_USERNAME>/<filename>` on each host; existing files are overwritten.
+ - How do I call sync mode? Send `{"ips": [...], "command": "...", "mode": "sync"}` to `/api/execute`.

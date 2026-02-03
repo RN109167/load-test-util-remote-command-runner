@@ -199,8 +199,8 @@ async function startJob(ips, command) {
     const res = await fetch('/api/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // Request synchronous execution to get immediate output and avoid polling
-      body: JSON.stringify({ ips, command, mode: 'sync' }),
+      // Default to async execution; backend returns a jobId and UI polls
+      body: JSON.stringify({ ips, command }),
     });
     const data = await res.json();
     if (!data.ok) {
