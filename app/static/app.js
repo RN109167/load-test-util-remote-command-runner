@@ -5,15 +5,18 @@ const resultsBody = document.getElementById('results-body');
 const btnClean = document.getElementById('btn-clean');
 const btnStart = document.getElementById('btn-start');
 const btnStop = document.getElementById('btn-stop');
-const btnRestart = document.getElementById('btn-restart');
 const btnUpload = document.getElementById('btn-upload');
 const btnCopyFromVm = document.getElementById('btn-copy-from-vm');
+const btnNcStart = document.getElementById('btn-nc-start');
+const btnNcStop = document.getElementById('btn-nc-stop');
 const ipsTextarea = document.getElementById('ips');
 const commandInput = document.getElementById('command');
 const runBtn = document.getElementById('run-btn');
 
 // Shortcut command constants
 const CLEAN_CONCENTRATORS_CMD = 'echo palmedia1 | sudo -S systemctl stop onelink-concentrator && sudo rm -rf /opt/onelink-concentrator/data/kahadb/*.* && sudo -S systemctl start onelink-concentrator';
+const START_NCONNECTMOCK_CMD = 'sh start-nconnectmock.sh';
+const STOP_NCONNECTMOCK_CMD = 'sh stop-nconnectmock.sh';
 
 let currentIPs = [];
 // No payload export/state needed in UI-only phase
@@ -132,7 +135,7 @@ function updateToolbarState() {
   const ips = sanitizeIPs(ipsTextarea.value);
   const allValid = validateAllIPs(ips);
   const disabled = !allValid;
-  for (const b of [btnClean, btnStart, btnStop, btnRestart, btnUpload, btnCopyFromVm]) {
+  for (const b of [btnClean, btnStart, btnStop, btnUpload, btnCopyFromVm, btnNcStart, btnNcStop]) {
     if (b) b.disabled = disabled;
   }
   // Enable Run only when IPs valid and command non-empty
@@ -171,7 +174,8 @@ btnClean && btnClean.addEventListener('click', () =>
 );
 btnStart && btnStart.addEventListener('click', () => triggerCommand('Start Load Injector', 'sh start.sh'));
 btnStop && btnStop.addEventListener('click', () => triggerCommand('Stop Load Injector', 'sh stop.sh'));
-btnRestart && btnRestart.addEventListener('click', () => triggerCommand('Restart Load Injector', 'sh restart.sh'));
+btnNcStart && btnNcStart.addEventListener('click', () => triggerCommand('Start nconnectmock.', START_NCONNECTMOCK_CMD));
+btnNcStop && btnNcStop.addEventListener('click', () => triggerCommand('Stop nconnectmock.', STOP_NCONNECTMOCK_CMD));
 
 // Upload & copy flow
 const fileInput = document.getElementById('file-input');
@@ -372,7 +376,7 @@ async function startJob(ips, command) {
 
 function setDisabledState(disabled) {
   if (runBtn) runBtn.disabled = disabled;
-  for (const b of [btnClean, btnStart, btnStop, btnRestart, btnUpload, btnCopyFromVm]) {
+  for (const b of [btnClean, btnStart, btnStop, btnUpload, btnCopyFromVm, btnNcStart, btnNcStop]) {
     if (b) b.disabled = disabled;
   }
   if (!disabled) {
