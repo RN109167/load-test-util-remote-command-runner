@@ -6,6 +6,7 @@ const btnClean = document.getElementById('btn-clean');
 const btnStart = document.getElementById('btn-start');
 const btnStop = document.getElementById('btn-stop');
 const btnRestart = document.getElementById('btn-restart');
+const btnUpload = document.getElementById('btn-upload');
 const ipsTextarea = document.getElementById('ips');
 const commandInput = document.getElementById('command');
 const runBtn = document.getElementById('run-btn');
@@ -73,7 +74,7 @@ function updateToolbarState() {
   const ips = sanitizeIPs(ipsTextarea.value);
   const allValid = validateAllIPs(ips);
   const disabled = !allValid;
-  for (const b of [btnClean, btnStart, btnStop, btnRestart]) {
+  for (const b of [btnClean, btnStart, btnStop, btnRestart, btnUpload]) {
     if (b) b.disabled = disabled;
   }
   // Enable Run only when IPs valid and command non-empty
@@ -113,6 +114,57 @@ btnStart && btnStart.addEventListener('click', () => triggerCommand('Start Load 
 btnStop && btnStop.addEventListener('click', () => triggerCommand('Stop Load Injector', 'sh stop.sh'));
 btnRestart && btnRestart.addEventListener('click', () => triggerCommand('Restart Load Injector', 'sh restart.sh'));
 
+// Upload & copy flow
+const fileInput = document.getElementById('file-input');
+btnUpload && btnUpload.addEventListener('click', () => {
+  fileInput && fileInput.click();
+});
+
+fileInput && fileInput.addEventListener('change', async () => {
+  formError.classList.add('hidden');
+  const ips = sanitizeIPs(ipsTextarea.value);
+  if (!validateAllIPs(ips)) {
+    formError.textContent = ips.length ? 'Please correct invalid IPs before uploading.' : 'Please provide at least one IP address.';
+    formError.classList.remove('hidden');
+    updateToolbarState();
+    fileInput.value = '';
+    return;
+  }
+  const file = fileInput.files && fileInput.files[0];
+  if (!file) return;
+  setDisabledState(true);
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('ips', JSON.stringify(ips));
+    const res = await fetch('/api/upload-copy', {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      formError.textContent = data.error || 'Upload failed';
+      formError.classList.remove('hidden');
+      return;
+    }
+    currentIPs = ips;
+    // Render results; show destination path in stdout column
+    const job = { statuses: data.statuses || {}, results: {} };
+    for (const ip of ips) {
+      job.results[ip] = job.results[ip] || {};
+      const r = data.results && data.results[ip];
+      if (r && r.dest) job.results[ip].stdout = `Copied to ${r.dest}`;
+      if (r && r.error) job.results[ip].stderr = r.error;
+    }
+    renderTable(currentIPs, job);
+  } catch (err) {
+    formError.textContent = 'Network error: ' + err.message;
+    formError.classList.remove('hidden');
+  } finally {
+    setDisabledState(false);
+    fileInput.value = '';
+  }
+});
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   formError.classList.add('hidden');
@@ -169,7 +221,7 @@ async function startJob(ips, command) {
 
 function setDisabledState(disabled) {
   if (runBtn) runBtn.disabled = disabled;
-  for (const b of [btnClean, btnStart, btnStop, btnRestart]) {
+  for (const b of [btnClean, btnStart, btnStop, btnRestart, btnUpload]) {
     if (b) b.disabled = disabled;
   }
   if (!disabled) {

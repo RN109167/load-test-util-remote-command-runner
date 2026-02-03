@@ -3,6 +3,8 @@ import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Blueprint, render_template, request, jsonify, current_app
+import os
+import paramiko
 import time
 from .job_manager import JobManager
 from .ssh_executor import execute_command_on_host
@@ -183,3 +185,92 @@ def api_job(job_id):
     job_view = dict(job)
     job_view["results"] = truncated
     return jsonify({"ok": True, "job": job_view})
+
+
+@bp.route("/api/upload-copy", methods=["POST"])
+def api_upload_copy():
+    # Expect multipart/form-data with 'file' and 'ips' (JSON array or delimited string)
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "No file uploaded"}), 400
+    file = request.files["file"]
+    ips_raw = (request.form.get("ips") or "").strip()
+
+    # Parse IPs from JSON or split by newline/comma/space
+    ips = []
+    if ips_raw:
+        try:
+            import json
+            parsed = json.loads(ips_raw)
+            if isinstance(parsed, list):
+                ips = [str(x).strip() for x in parsed if str(x).strip()]
+        except Exception:
+            ips = [s.strip() for s in re.split(r"\n|\r|,|\s+", ips_raw) if s.strip()]
+
+    if not ips:
+        return jsonify({"ok": False, "error": "Provide IP addresses"}), 400
+    invalid = [ip for ip in ips if not _valid_ipv4(ip)]
+    if invalid:
+        return jsonify({"ok": False, "error": f"Invalid IPv4: {', '.join(invalid)}"}), 400
+
+    # Save uploaded file to instance/uploads
+    uploads_root = os.path.join(current_app.instance_path, "uploads")
+    os.makedirs(uploads_root, exist_ok=True)
+    filename = file.filename or "uploaded_file"
+    tmp_path = os.path.join(uploads_root, filename)
+    file.save(tmp_path)
+
+    username = current_app.config.get("SSH_USERNAME", "user")
+    password = current_app.config.get("SSH_PASSWORD", "palmedia1")
+    port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
+    max_workers = int(current_app.config.get("MAX_PARALLEL", 10))
+
+    results = {}
+    statuses = {}
+
+    def sftp_copy(ip):
+        try:
+            transport = paramiko.Transport((ip, port))
+            transport.connect(username=username, password=password)
+            sftp = paramiko.SFTPClient.from_transport(transport)
+            try:
+                # Destination path in user's home directory
+                dest = f"/home/{username}/{filename}"
+                sftp.put(tmp_path, dest)
+                # Set permissions to 0644
+                try:
+                    sftp.chmod(dest, 0o644)
+                except Exception:
+                    pass
+                statuses[ip] = "completed"
+                results[ip] = {"ok": True, "dest": dest}
+            finally:
+                try:
+                    sftp.close()
+                except Exception:
+                    pass
+                try:
+                    transport.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            statuses[ip] = "failed"
+            results[ip] = {"ok": False, "error": str(e)}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futmap = {ex.submit(sftp_copy, ip): ip for ip in ips}
+        for _ in as_completed(futmap):
+            pass
+
+    # Cleanup temp file
+    try:
+        os.remove(tmp_path)
+    except Exception:
+        pass
+
+    return jsonify({
+        "ok": True,
+        "completed": True,
+        "results": results,
+        "statuses": statuses,
+        "filename": filename,
+    })

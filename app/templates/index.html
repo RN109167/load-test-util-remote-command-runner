@@ -21,6 +21,7 @@
           <button type="button" id="btn-start" disabled>Start Load Injector</button>
           <button type="button" id="btn-stop" disabled>Stop Load Injector</button>
           <button type="button" id="btn-restart" disabled>Restart Load Injector</button>
+          <button type="button" id="btn-upload" disabled>Upload and Copy Files</button>
         </div>
         <div class="grid">
           <label>
@@ -36,6 +37,8 @@
         <div class="actions">
           <button type="submit" id="run-btn" disabled>Run</button>
         </div>
+        <!-- Hidden file input for upload -->
+        <input type="file" id="file-input" class="hidden" />
         <div id="form-error" class="error hidden"></div>
       </form>
     </section>
