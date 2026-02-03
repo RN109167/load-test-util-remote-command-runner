@@ -242,3 +242,115 @@ def api_upload_copy():
         "statuses": statuses,
         "filename": filename,
     })
+
+
+@bp.route("/api/copy-from-vm", methods=["POST"])
+def api_copy_from_vm():
+    data = request.get_json(silent=True) or {}
+    ips = data.get("ips") or []
+    source = data.get("source") or {}
+
+    # Validate targets
+    if not ips or not isinstance(ips, list):
+        return jsonify({"ok": False, "error": "Provide target IP addresses"}), 400
+    invalid = [ip for ip in ips if not _valid_ipv4(ip)]
+    if invalid:
+        return jsonify({"ok": False, "error": f"Invalid IPv4: {', '.join(invalid)}"}), 400
+
+    # Validate source
+    src_ip = (source.get("ip") or "").strip()
+    src_user = (source.get("username") or "").strip()
+    src_pass = (source.get("password") or "").strip()
+    src_port = int(source.get("port") or current_app.config.get("SSH_DEFAULT_PORT", 22))
+    src_path = (source.get("path") or "").strip()
+
+    if not _valid_ipv4(src_ip):
+        return jsonify({"ok": False, "error": "Invalid source IP"}), 400
+    if not src_user or not src_pass or not src_path:
+        return jsonify({"ok": False, "error": "Source username, password, and path are required"}), 400
+
+    # Prepare temp download location
+    uploads_root = os.path.join(current_app.instance_path, "uploads")
+    os.makedirs(uploads_root, exist_ok=True)
+    basename = os.path.basename(src_path) or "source_file"
+    tmp_path = os.path.join(uploads_root, f"tmp-{uuid.uuid4()}-{basename}")
+
+    # Download from source VM
+    try:
+        transport = paramiko.Transport((src_ip, src_port))
+        transport.connect(username=src_user, password=src_pass)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        try:
+            sftp.get(src_path, tmp_path)
+        finally:
+            try:
+                sftp.close()
+            except Exception:
+                pass
+            try:
+                transport.close()
+            except Exception:
+                pass
+    except Exception as e:
+        # Clean up temp if any
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": f"Download from source failed: {e}"}), 500
+
+    # Upload to target hosts
+    username = current_app.config.get("SSH_USERNAME", "user")
+    password = current_app.config.get("SSH_PASSWORD", "palmedia1")
+    port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
+    max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
+
+    results = {}
+    statuses = {}
+
+    def sftp_put(ip):
+        try:
+            transport = paramiko.Transport((ip, port))
+            transport.connect(username=username, password=password)
+            sftp = paramiko.SFTPClient.from_transport(transport)
+            try:
+                dest = f"/home/{username}/{basename}"
+                sftp.put(tmp_path, dest)
+                try:
+                    sftp.chmod(dest, 0o644)
+                except Exception:
+                    pass
+                statuses[ip] = "completed"
+                results[ip] = {"ok": True, "dest": dest}
+            finally:
+                try:
+                    sftp.close()
+                except Exception:
+                    pass
+                try:
+                    transport.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            statuses[ip] = "failed"
+            results[ip] = {"ok": False, "error": str(e)}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futmap = {ex.submit(sftp_put, ip): ip for ip in ips}
+        for _ in as_completed(futmap):
+            pass
+
+    # Cleanup temp file
+    try:
+        os.remove(tmp_path)
+    except Exception:
+        pass
+
+    return jsonify({
+        "ok": True,
+        "completed": True,
+        "results": results,
+        "statuses": statuses,
+        "filename": basename,
+    })

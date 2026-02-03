@@ -68,6 +68,7 @@ python main.py
 - In async mode (default), the server returns a `jobId` and the UI (or client) can poll `/api/job/<id>` until `completed`.
 - In sync mode (opt-in), the server returns a single response with per-IP `stdout`, `stderr`, and `exit_code`.
  - Upload and Copy uses SFTP (`paramiko`) to write files to `/home/<username>/<filename>` and sets permissions to `0644`.
+ - Copy From VM: downloads a file from a source VM (provided IP, credentials, and path) to the server, then distributes it to all target hosts concurrently.
 
 ## Project Structure
 ```
@@ -75,6 +76,7 @@ script_util/
 ├─ app/
 │  ├─ __init__.py        # Flask app factory + env config
 │  ├─ routes.py          # UI + /api/execute (sync/async) + /api/job/<id> + /api/upload-copy
+│  │                      # + /api/copy-from-vm (download from source VM and distribute)
 │  ├─ job_manager.py     # In-memory jobs for async mode
 │  ├─ ssh_executor.py    # Paramiko-based remote exec
 │  ├─ templates/

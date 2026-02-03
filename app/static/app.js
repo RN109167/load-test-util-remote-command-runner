@@ -7,6 +7,7 @@ const btnStart = document.getElementById('btn-start');
 const btnStop = document.getElementById('btn-stop');
 const btnRestart = document.getElementById('btn-restart');
 const btnUpload = document.getElementById('btn-upload');
+const btnCopyFromVm = document.getElementById('btn-copy-from-vm');
 const ipsTextarea = document.getElementById('ips');
 const commandInput = document.getElementById('command');
 const runBtn = document.getElementById('run-btn');
@@ -72,7 +73,7 @@ function updateToolbarState() {
   const ips = sanitizeIPs(ipsTextarea.value);
   const allValid = validateAllIPs(ips);
   const disabled = !allValid;
-  for (const b of [btnClean, btnStart, btnStop, btnRestart, btnUpload]) {
+  for (const b of [btnClean, btnStart, btnStop, btnRestart, btnUpload, btnCopyFromVm]) {
     if (b) b.disabled = disabled;
   }
   // Enable Run only when IPs valid and command non-empty
@@ -171,6 +172,89 @@ fileInput && fileInput.addEventListener('change', async () => {
     fileInput.value = '';
   }
 });
+
+// Copy From VM modal handlers
+const copyModal = document.getElementById('copy-modal');
+const copyForm = document.getElementById('copy-form');
+const copyError = document.getElementById('copy-error');
+const copyCancelBtn = document.getElementById('copy-cancel');
+const srcIpInput = document.getElementById('src-ip');
+const srcUserInput = document.getElementById('src-user');
+const srcPassInput = document.getElementById('src-pass');
+const srcPortInput = document.getElementById('src-port');
+const srcPathInput = document.getElementById('src-path');
+
+btnCopyFromVm && btnCopyFromVm.addEventListener('click', () => {
+  copyError.classList.add('hidden');
+  copyModal.classList.remove('hidden');
+});
+
+copyCancelBtn && copyCancelBtn.addEventListener('click', () => {
+  copyModal.classList.add('hidden');
+});
+
+copyForm && copyForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  copyError.classList.add('hidden');
+  const ips = sanitizeIPs(ipsTextarea.value);
+  if (!validateAllIPs(ips)) {
+    copyError.textContent = ips.length ? 'Please correct invalid target IPs.' : 'Please provide target IPs in the main form.';
+    copyError.classList.remove('hidden');
+    return;
+  }
+  const srcIp = (srcIpInput?.value || '').trim();
+  const srcUser = (srcUserInput?.value || '').trim();
+  const srcPass = (srcPassInput?.value || '').trim();
+  const srcPort = Number(srcPortInput?.value || 22);
+  const srcPath = (srcPathInput?.value || '').trim();
+  if (!isValidIPv4(srcIp)) {
+    copyError.textContent = 'Invalid source IP.';
+    copyError.classList.remove('hidden');
+    return;
+  }
+  if (!srcUser || !srcPass || !srcPath) {
+    copyError.textContent = 'Username, password, and source file path are required.';
+    copyError.classList.remove('hidden');
+    return;
+  }
+  const confirmed = window.confirm(`Copy '${srcPath}' from ${srcIp} to ${ips.length} host(s)?`);
+  if (!confirmed) return;
+  setDisabledState(true);
+  try {
+    const payload = {
+      ips,
+      source: { ip: srcIp, username: srcUser, password: srcPass, port: srcPort, path: srcPath }
+    };
+    const res = await fetch('/api/copy-from-vm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      copyError.textContent = data.error || 'Copy failed';
+      copyError.classList.remove('hidden');
+      return;
+    }
+    copyModal.classList.add('hidden');
+    currentIPs = ips;
+    const job = { statuses: data.statuses || {}, results: {} };
+    for (const ip of ips) {
+      job.results[ip] = job.results[ip] || {};
+      const r = data.results && data.results[ip];
+      if (r && r.dest) job.results[ip].stdout = `Copied to ${r.dest}`;
+      if (r && r.error) job.results[ip].stderr = r.error;
+    }
+    renderTable(currentIPs, job);
+  } catch (err) {
+    copyError.textContent = 'Network error: ' + err.message;
+    copyError.classList.remove('hidden');
+  } finally {
+    setDisabledState(false);
+    // Reset form inputs
+    if (copyForm) copyForm.reset();
+  }
+});
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   formError.classList.add('hidden');
@@ -227,7 +311,7 @@ async function startJob(ips, command) {
 
 function setDisabledState(disabled) {
   if (runBtn) runBtn.disabled = disabled;
-  for (const b of [btnClean, btnStart, btnStop, btnRestart, btnUpload]) {
+  for (const b of [btnClean, btnStart, btnStop, btnRestart, btnUpload, btnCopyFromVm]) {
     if (b) b.disabled = disabled;
   }
   if (!disabled) {

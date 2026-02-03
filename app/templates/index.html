@@ -22,6 +22,7 @@
           <button type="button" id="btn-stop" disabled>Stop Load Injector</button>
           <button type="button" id="btn-restart" disabled>Restart Load Injector</button>
           <button type="button" id="btn-upload" disabled>Upload and Copy Files</button>
+          <button type="button" id="btn-copy-from-vm" disabled>Copy From VM</button>
         </div>
         <div class="grid">
           <label>
@@ -42,6 +43,42 @@
         <div id="form-error" class="error hidden"></div>
       </form>
     </section>
+
+    <!-- Copy From VM Modal -->
+    <div id="copy-modal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Copy From VM</h3>
+        <form id="copy-form">
+          <div class="grid">
+            <label>
+              Source Host IP
+              <input type="text" id="src-ip" placeholder="192.168.1.10" />
+            </label>
+            <label>
+              Username
+              <input type="text" id="src-user" placeholder="user" />
+            </label>
+            <label>
+              Password
+              <input type="password" id="src-pass" placeholder="••••••" />
+            </label>
+            <label>
+              Port
+              <input type="number" id="src-port" value="22" min="1" max="65535" />
+            </label>
+            <label>
+              Source File Path
+              <input type="text" id="src-path" placeholder="/home/user/file.txt" />
+            </label>
+          </div>
+          <div class="actions">
+            <button type="button" id="copy-cancel">Cancel</button>
+            <button type="submit" id="copy-submit">Copy to Hosts</button>
+          </div>
+          <div id="copy-error" class="error hidden"></div>
+        </form>
+      </div>
+    </div>
 
     <section class="card">
       <h2>Results</h2>

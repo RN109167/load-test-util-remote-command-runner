@@ -28,3 +28,9 @@ footer { padding: 24px; color: #94a3b8; }
 @media (max-width: 900px) {
   .grid { grid-template-columns: 1fr; }
 }
+
+/* Modal */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal.hidden { display: none; }
+.modal-content { background: #111827; border: 1px solid #374151; border-radius: 12px; padding: 16px; width: min(720px, 92vw); }
+.modal-content h3 { margin: 0 0 12px; }
