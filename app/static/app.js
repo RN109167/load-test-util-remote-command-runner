@@ -68,8 +68,6 @@ function renderTable(ips, job) {
   });
 }
 
-// UI-only: no backend calls. We just render a preview.
-
 function updateToolbarState() {
   const ips = sanitizeIPs(ipsTextarea.value);
   const allValid = validateAllIPs(ips);
@@ -106,7 +104,6 @@ async function triggerCommand(label, command) {
 
 updateToolbarState();
 ipsTextarea.addEventListener('input', updateToolbarState);
-commandInput && commandInput.addEventListener('input', updateToolbarState);
 commandInput && commandInput.addEventListener('input', updateToolbarState);
 
 btnClean && btnClean.addEventListener('click', () => triggerCommand('Clean Concentrators', 'sh clean.sh'));

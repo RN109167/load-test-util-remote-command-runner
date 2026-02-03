@@ -1,11 +1,9 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request, jsonify, current_app
 import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Blueprint, render_template, request, jsonify, current_app
 import os
 import paramiko
-import time
 from .job_manager import JobManager
 from .ssh_executor import execute_command_on_host
 
@@ -37,7 +35,6 @@ def api_execute():
     ips = data.get("ips") or []
     command = (data.get("command") or "").strip()
     mode = data.get("mode") or data.get("sync")
-    postcheck_pattern = (data.get("postcheckPattern") or "").strip()
 
     # Validation
     errors = []
@@ -79,35 +76,6 @@ def api_execute():
                     res = fut.result()
                     results[ip] = res
                     statuses[ip] = "completed" if res.get("ok") else "failed"
-                    # Optional post-check: verify process started (e.g., after nohup/background)
-                    if postcheck_pattern:
-                        try:
-                            # Small delay to allow process launch
-                            time.sleep(1)
-                            check = execute_command_on_host(
-                                host=ip,
-                                port=22,
-                                username="user",
-                                password="palmedia1",
-                                private_key=None,
-                                command=f'pgrep -f "{postcheck_pattern}" || true',
-                                timeout=timeout,
-                            )
-                            # Parse PIDs from stdout
-                            pids = []
-                            if check.get("stdout"):
-                                try:
-                                    pids = [int(x) for x in check["stdout"].strip().split() if x.isdigit()]
-                                except Exception:
-                                    pids = []
-                            res["postcheck"] = {
-                                "started": len(pids) > 0,
-                                "pids": pids,
-                            }
-                            results[ip] = res
-                        except Exception:
-                            # Ignore postcheck errors
-                            pass
                 except Exception as e:
                     results[ip] = {
                         "ok": False,

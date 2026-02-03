@@ -12,6 +12,7 @@ Flask + Vanilla JS tool to run shell commands across multiple VMs via SSH and sh
   - Restart Load Injector → `sh restart.sh`
 - Immediate results mode (default): executes across all IPs and returns stdout, stderr, and exit codes without polling.
 - Optional async mode (fallback): creates a job and exposes `/api/job/<id>` for polling.
+ - Upload and Copy Files: upload any file (up to 2GB, configurable) and distribute it to all hosts’ home directory, overwriting if present.
 
 ## Requirements
 - Python 3.10+
@@ -24,8 +25,9 @@ The app is configured via environment variables (no credentials in the UI):
 - `SSH_PASSWORD` (default: `palmedia1`)
 - `SSH_DEFAULT_PORT` (default: `22`)
 - `SSH_TIMEOUT_SECONDS` (default: `20`)
-- `MAX_PARALLEL` (default: `10`) — set to `30` to ssh into 30 VMs concurrently
-- `PORT` (default: `5000`) — web server port
+- `MAX_PARALLEL` (default: `30`) — concurrency for SSH and uploads
+- `PORT` (default: `5050`) — web server port
+- `SECRET_KEY` — set in production for session-related security (optional here)
 
 Example:
 ```bash
@@ -46,6 +48,7 @@ Open http://127.0.0.1:5050
 - Success is based on the remote exit code.
 - In sync mode, the server returns a single response with per-IP `stdout`, `stderr`, and `exit_code`.
 - In async mode, the server returns a `jobId` and the UI (or client) can poll `/api/job/<id>` until `completed`.
+ - Upload and Copy uses SFTP (`paramiko`) to write files to `/home/<username>/<filename>` and sets permissions to `0644`.
 
 ## Notes on scripts and logging
 - The utility does not add redirection; your scripts control logging.
@@ -59,7 +62,7 @@ Open http://127.0.0.1:5050
 script_util/
 ├─ app/
 │  ├─ __init__.py        # Flask app factory + env config
-│  ├─ routes.py          # UI + /api/execute (sync + async) + /api/job/<id>
+│  ├─ routes.py          # UI + /api/execute (sync/async) + /api/job/<id> + /api/upload-copy
 │  ├─ job_manager.py     # In-memory jobs for async mode
 │  ├─ ssh_executor.py    # Paramiko-based remote exec
 │  ├─ templates/
@@ -78,3 +81,4 @@ script_util/
 
 ## FAQ
 - Can it ssh into 30 VMs? Yes — set `MAX_PARALLEL=30` (subject to network/host limits).
+ - Where do uploads go? To `/home/<SSH_USERNAME>/<filename>` on each host; existing files are overwritten.
