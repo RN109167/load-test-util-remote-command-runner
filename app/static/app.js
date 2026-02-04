@@ -415,6 +415,7 @@ form.addEventListener('submit', async (e) => {
 });
 
 async function startJob(ips, command) {
+  // Disable controls until job completes (statuses received)
   setDisabledState(true);
   try {
     const res = await fetch('/api/execute', {
@@ -433,6 +434,8 @@ async function startJob(ips, command) {
     currentIPs = ips;
     if (data.results) {
       renderTable(currentIPs, { statuses: data.statuses || {}, results: data.results, completed: data.completed });
+      // Immediate/sync execution done; re-enable controls
+      setDisabledState(false);
     } else if (data.jobId) {
       // Fallback to async job mode
       renderTable(currentIPs, { statuses: Object.fromEntries(ips.map(ip => [ip, 'queued'])) });
@@ -442,13 +445,14 @@ async function startJob(ips, command) {
     formError.textContent = 'Network error: ' + err.message;
     formError.classList.remove('hidden');
   } finally {
-    setDisabledState(false);
+    // Controls remain disabled for async; pollJob will re-enable on completion
   }
 }
 
 function setDisabledState(disabled) {
   if (runBtn) runBtn.disabled = disabled;
-  // Disable/enable currently rendered sub-action buttons
+  // Disable/enable category buttons and currently rendered sub-action buttons
+  hubEl.querySelectorAll('button').forEach(b => { b.disabled = disabled; });
   actionsEl.querySelectorAll('button').forEach(b => { b.disabled = disabled; });
   if (!disabled) {
     // Re-apply validation gating when re-enabling controls
@@ -471,4 +475,6 @@ async function pollJob(jobId) {
     completed = !!job.completed;
     if (!completed) await new Promise(r => setTimeout(r, 1000));
   }
+  // Job completed; re-enable controls
+  setDisabledState(false);
 }
