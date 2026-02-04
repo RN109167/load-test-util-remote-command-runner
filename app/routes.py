@@ -191,6 +191,10 @@ def api_upload_copy():
     password = current_app.config.get("SSH_PASSWORD", "palmedia1")
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
+    # Optional destination directory
+    dest_dir = (request.form.get("destDir") or "").strip()
+    if not dest_dir:
+        dest_dir = f"/home/{username}"
 
     results = {}
     statuses = {}
@@ -201,8 +205,8 @@ def api_upload_copy():
             transport.connect(username=username, password=password)
             sftp = paramiko.SFTPClient.from_transport(transport)
             try:
-                # Destination path in user's home directory
-                dest = f"/home/{username}/{filename}"
+                # Destination path
+                dest = f"{dest_dir.rstrip('/')}/{filename}"
                 sftp.put(tmp_path, dest)
                 # Set permissions to 0644
                 try:
@@ -249,6 +253,7 @@ def api_copy_from_vm():
     data = request.get_json(silent=True) or {}
     ips = data.get("ips") or []
     source = data.get("source") or {}
+    dest_dir = (data.get("destDir") or "").strip()
 
     # Validate targets
     if not ips or not isinstance(ips, list):
@@ -305,6 +310,8 @@ def api_copy_from_vm():
     password = current_app.config.get("SSH_PASSWORD", "palmedia1")
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
+    if not dest_dir:
+        dest_dir = f"/home/{username}"
 
     results = {}
     statuses = {}
@@ -315,7 +322,7 @@ def api_copy_from_vm():
             transport.connect(username=username, password=password)
             sftp = paramiko.SFTPClient.from_transport(transport)
             try:
-                dest = f"/home/{username}/{basename}"
+                dest = f"{dest_dir.rstrip('/')}/{basename}"
                 sftp.put(tmp_path, dest)
                 try:
                     sftp.chmod(dest, 0o644)

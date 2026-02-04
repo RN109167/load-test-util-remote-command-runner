@@ -32,14 +32,14 @@ const SHORTCUTS = {
     Start: 'sh start-unload.sh',
     Stop: 'sh stop-unload.sh',
   },
-  nConnectMock: {
+  'nConnect Mock': {
     Start: 'sh start-nconnectmock.sh',
     Stop: 'sh stop-nconnectmock.sh',
   },
   'File Operations': ['Copy From VM', 'Upload and Copy Files'],
 };
 
-const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnectMock', 'File Operations'];
+const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnect Mock', 'File Operations'];
 let selectedCategory = null;
 
 let currentIPs = [];
@@ -238,8 +238,10 @@ function renderActions(cat) {
           if (copyError) copyError.classList.add('hidden');
           if (copyModal) copyModal.classList.remove('hidden');
         } else if (label === 'Upload and Copy Files') {
-          const fileInput = document.getElementById('file-input');
-          if (fileInput) fileInput.click();
+          const uploadModal = document.getElementById('upload-modal');
+          const uploadError = document.getElementById('upload-error');
+          if (uploadError) uploadError.classList.add('hidden');
+          if (uploadModal) uploadModal.classList.remove('hidden');
         }
         return;
       }
@@ -256,47 +258,56 @@ function setActionsDisabled(disabled) {
 
 renderCategories();
 
-// Upload & copy flow
-const fileInput = document.getElementById('file-input');
+// Upload & copy flow (modal)
+const uploadModal = document.getElementById('upload-modal');
+const uploadForm = document.getElementById('upload-form');
+const uploadError = document.getElementById('upload-error');
+const uploadCancelBtn = document.getElementById('upload-cancel');
+const uploadDestInput = document.getElementById('upload-dest-dir');
+const uploadFileInput = document.getElementById('upload-file');
 
-fileInput && fileInput.addEventListener('change', async () => {
-  formError.classList.add('hidden');
+uploadCancelBtn && uploadCancelBtn.addEventListener('click', () => {
+  uploadModal.classList.add('hidden');
+  uploadForm && uploadForm.reset();
+  if (uploadError) uploadError.classList.add('hidden');
+});
+
+uploadForm && uploadForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  uploadError.classList.add('hidden');
   const ips = sanitizeIPs(ipsTextarea.value);
   if (!validateAllIPs(ips)) {
-    formError.textContent = ips.length ? 'Please correct invalid IPs before uploading.' : 'Please provide at least one IP address.';
-    formError.classList.remove('hidden');
-    updateToolbarState();
-    fileInput.value = '';
+    uploadError.textContent = ips.length ? 'Please correct invalid IPs before uploading.' : 'Please provide at least one IP address.';
+    uploadError.classList.remove('hidden');
     return;
   }
-  const file = fileInput.files && fileInput.files[0];
-  if (!file) return;
-  // Confirm before distributing file across hosts
+  const file = uploadFileInput && uploadFileInput.files && uploadFileInput.files[0];
+  if (!file) {
+    uploadError.textContent = 'Please select a file to upload.';
+    uploadError.classList.remove('hidden');
+    return;
+  }
+  const destDir = (uploadDestInput?.value || '').trim();
   const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
   const large = file.size > (1024 * 1024 * 1024); // >1 GB
-  const msg = `Upload '${file.name}' (${sizeMB} MB) to ${ips.length} host(s) at ~/${file.name}.\nExisting files will be overwritten. Proceed?` + (large ? `\n\nWarning: Large file; uploads may take time.` : '');
+  const msg = `Upload '${file.name}' (${sizeMB} MB) to ${ips.length} host(s)` + (destDir ? ` at ${destDir}/${file.name}.` : ` at default destination.`) + (large ? `\n\nWarning: Large file; uploads may take time.` : '');
   const proceed = window.confirm(msg);
-  if (!proceed) {
-    fileInput.value = '';
-    return;
-  }
+  if (!proceed) return;
   setDisabledState(true);
   try {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('ips', JSON.stringify(ips));
-    const res = await fetch('/api/upload-copy', {
-      method: 'POST',
-      body: formData,
-    });
+    if (destDir) formData.append('destDir', destDir);
+    const res = await fetch('/api/upload-copy', { method: 'POST', body: formData });
     const data = await res.json();
     if (!data.ok) {
-      formError.textContent = data.error || 'Upload failed';
-      formError.classList.remove('hidden');
+      uploadError.textContent = data.error || 'Upload failed';
+      uploadError.classList.remove('hidden');
       return;
     }
+    uploadModal.classList.add('hidden');
     currentIPs = ips;
-    // Render results; show destination path in stdout column
     const job = { statuses: data.statuses || {}, results: {} };
     for (const ip of ips) {
       job.results[ip] = job.results[ip] || {};
@@ -306,11 +317,11 @@ fileInput && fileInput.addEventListener('change', async () => {
     }
     renderTable(currentIPs, job);
   } catch (err) {
-    formError.textContent = 'Network error: ' + err.message;
-    formError.classList.remove('hidden');
+    uploadError.textContent = 'Network error: ' + err.message;
+    uploadError.classList.remove('hidden');
   } finally {
     setDisabledState(false);
-    fileInput.value = '';
+    uploadForm && uploadForm.reset();
   }
 });
 
@@ -324,6 +335,7 @@ const srcUserInput = document.getElementById('src-user');
 const srcPassInput = document.getElementById('src-pass');
 const srcPortInput = document.getElementById('src-port');
 const srcPathInput = document.getElementById('src-path');
+const destDirInput = document.getElementById('dest-dir');
 
 // Opening the modal is now triggered by the Shortcut Hub "Copy From VM" button
 
@@ -361,7 +373,8 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
   try {
     const payload = {
       ips,
-      source: { ip: srcIp, username: srcUser, password: srcPass, port: srcPort, path: srcPath }
+      source: { ip: srcIp, username: srcUser, password: srcPass, port: srcPort, path: srcPath },
+      destDir: (destDirInput?.value || '').trim()
     };
     const res = await fetch('/api/copy-from-vm', {
       method: 'POST',

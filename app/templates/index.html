@@ -53,11 +53,11 @@
               <input type="text" id="src-ip" placeholder="192.168.1.10" />
             </label>
             <label>
-              Username
+              Source Host Username
               <input type="text" id="src-user" placeholder="user" />
             </label>
             <label>
-              Password
+              Source Host Password
               <input type="password" id="src-pass" placeholder="••••••" />
             </label>
             <label>
@@ -67,6 +67,10 @@
             <label>
               Source File Path
               <input type="text" id="src-path" placeholder="/home/user/file.txt" />
+            </label>
+            <label>
+              Destination Directory (optional)
+              <input type="text" id="dest-dir" placeholder="/home/user" />
             </label>
           </div>
           <div class="actions">
@@ -94,6 +98,30 @@
       </table>
     </section>
   </main>
+
+  <!-- Upload and Copy Files Modal -->
+  <div id="upload-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>Upload and Copy Files</h3>
+      <form id="upload-form">
+        <div class="grid">
+          <label>
+            Destination Directory (optional)
+            <input type="text" id="upload-dest-dir" placeholder="/home/user" />
+          </label>
+          <label>
+            Select File
+            <input type="file" id="upload-file" />
+          </label>
+        </div>
+        <div class="actions">
+          <button type="button" id="upload-cancel">Cancel</button>
+          <button type="submit" id="upload-submit">Upload to Hosts</button>
+        </div>
+        <div id="upload-error" class="error hidden"></div>
+      </form>
+    </div>
+  </div>
 
   <footer>
     <small>Ensure you trust the target hosts. Manage known hosts in production.</small>
