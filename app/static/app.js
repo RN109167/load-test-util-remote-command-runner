@@ -270,6 +270,8 @@ const uploadError = document.getElementById('upload-error');
 const uploadCancelBtn = document.getElementById('upload-cancel');
 const uploadDestInput = document.getElementById('upload-dest-dir');
 const uploadFileInput = document.getElementById('upload-file');
+const uploadOwnerInput = document.getElementById('upload-owner');
+const uploadGroupInput = document.getElementById('upload-group');
 
 uploadCancelBtn && uploadCancelBtn.addEventListener('click', () => {
   uploadModal.classList.add('hidden');
@@ -304,6 +306,10 @@ uploadForm && uploadForm.addEventListener('submit', async (e) => {
     formData.append('file', file);
     formData.append('ips', JSON.stringify(ips));
     if (destDir) formData.append('destDir', destDir);
+    const owner = (uploadOwnerInput?.value || '').trim();
+    const group = (uploadGroupInput?.value || '').trim();
+    if (owner) formData.append('owner', owner);
+    if (group) formData.append('group', group);
     const res = await fetch('/api/upload-copy', { method: 'POST', body: formData });
     const data = await res.json();
     if (!data.ok) {
@@ -341,6 +347,8 @@ const srcPassInput = document.getElementById('src-pass');
 const srcPortInput = document.getElementById('src-port');
 const srcPathInput = document.getElementById('src-path');
 const destDirInput = document.getElementById('dest-dir');
+const copyOwnerInput = document.getElementById('copy-owner');
+const copyGroupInput = document.getElementById('copy-group');
 
 // Opening the modal is now triggered by the Shortcut Hub "Copy From VM" button
 
@@ -379,7 +387,9 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
     const payload = {
       ips,
       source: { ip: srcIp, username: srcUser, password: srcPass, port: srcPort, path: srcPath },
-      destDir: (destDirInput?.value || '').trim()
+      destDir: (destDirInput?.value || '').trim(),
+      owner: (copyOwnerInput?.value || '').trim(),
+      group: (copyGroupInput?.value || '').trim(),
     };
     const res = await fetch('/api/copy-from-vm', {
       method: 'POST',

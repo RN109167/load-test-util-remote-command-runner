@@ -196,6 +196,15 @@ def api_upload_copy():
     dest_dir = (request.form.get("destDir") or "").strip()
     if not dest_dir:
         dest_dir = f"/home/{username}"
+    # Optional owner/group for chown
+    owner = (request.form.get("owner") or "").strip()
+    group = (request.form.get("group") or "").strip()
+    # Basic validation to avoid command injection
+    safe_re = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+    if owner and not safe_re.match(owner):
+        return jsonify({"ok": False, "error": "Invalid owner format"}), 400
+    if group and not safe_re.match(group):
+        return jsonify({"ok": False, "error": "Invalid group format"}), 400
 
     results = {}
     statuses = {}
@@ -210,11 +219,18 @@ def api_upload_copy():
                 # Always upload to /tmp first, then move with sudo to destination
                 tmp_remote = f"/tmp/{uuid.uuid4()}-{filename}"
                 sftp.put(tmp_path, tmp_remote)
+                # Determine owner/group to use (default to SSH username)
+                use_owner = owner or username
+                use_group = group or username
+                # Validate existence of owner/group on target before applying
                 move_cmd = (
+                    f'OWNER="{use_owner}"; GROUP="{use_group}"; '
+                    f'id -u "$OWNER" >/dev/null 2>&1 || {{ echo "Owner not found: $OWNER"; exit 200; }}; '
+                    f'getent group "$GROUP" >/dev/null 2>&1 || {{ echo "Group not found: $GROUP"; exit 201; }}; '
                     f'echo {password} | sudo -S mkdir -p "{dest_dir}" && '
                     f'echo {password} | sudo -S mv -f "{tmp_remote}" "{dest}" && '
-                    f'echo {password} | sudo -S chown {username}:{username} "{dest}" && '
-                    f'echo {password} | sudo -S chmod 0644 "{dest}"'
+                    f'echo {password} | sudo -S chown "$OWNER":"$GROUP" "{dest}" && '
+                    f'echo {password} | sudo -S chmod 0664 "{dest}"'
                 )
                 res = execute_command_on_host(
                     host=ip,
@@ -268,6 +284,8 @@ def api_copy_from_vm():
     ips = data.get("ips") or []
     source = data.get("source") or {}
     dest_dir = (data.get("destDir") or "").strip()
+    owner = (data.get("owner") or "").strip()
+    group = (data.get("group") or "").strip()
 
     # Validate targets
     if not ips or not isinstance(ips, list):
@@ -325,6 +343,13 @@ def api_copy_from_vm():
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
     timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 20))
+    # Basic validation to avoid command injection
+    safe_re = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+    if owner and not safe_re.match(owner):
+        return jsonify({"ok": False, "error": "Invalid owner format"}), 400
+    if group and not safe_re.match(group):
+        return jsonify({"ok": False, "error": "Invalid group format"}), 400
+
     if not dest_dir:
         dest_dir = f"/home/{username}"
 
@@ -341,11 +366,16 @@ def api_copy_from_vm():
                 # Always upload to /tmp first, then move with sudo to destination
                 tmp_remote = f"/tmp/{uuid.uuid4()}-{basename}"
                 sftp.put(tmp_path, tmp_remote)
+                use_owner = owner or username
+                use_group = group or username
                 move_cmd = (
+                    f'OWNER="{use_owner}"; GROUP="{use_group}"; '
+                    f'id -u "$OWNER" >/dev/null 2>&1 || {{ echo "Owner not found: $OWNER"; exit 200; }}; '
+                    f'getent group "$GROUP" >/dev/null 2>&1 || {{ echo "Group not found: $GROUP"; exit 201; }}; '
                     f'echo {password} | sudo -S mkdir -p "{dest_dir}" && '
                     f'echo {password} | sudo -S mv -f "{tmp_remote}" "{dest}" && '
-                    f'echo {password} | sudo -S chown {username}:{username} "{dest}" && '
-                    f'echo {password} | sudo -S chmod 0644 "{dest}"'
+                    f'echo {password} | sudo -S chown "$OWNER":"$GROUP" "{dest}" && '
+                    f'echo {password} | sudo -S chmod 0664 "{dest}"'
                 )
                 res = execute_command_on_host(
                     host=ip,
