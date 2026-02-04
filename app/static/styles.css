@@ -25,6 +25,12 @@ button:disabled { background: #334155; cursor: not-allowed; }
 .action-btn:hover { background: rgba(37,99,235,0.15); color: #ffffff; border-color: #3b82f6; }
 .action-btn:disabled { background: transparent; color: #9ca3af; border-color: #334155; cursor: not-allowed; }
 
+/* Busy indicator */
+.busy { align-items: center; gap: 8px; margin: 4px 0 10px; color: #cbd5e1; }
+.busy:not(.hidden) { display: inline-flex; }
+.spinner { width: 14px; height: 14px; border: 2px solid rgba(203,213,225,0.3); border-top-color: #60a5fa; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 #results-table { width: 100%; border-collapse: collapse; margin-top: 12px; table-layout: fixed; }
 #results-table th, #results-table td { border: 1px solid #334155; padding: 8px; vertical-align: top; word-wrap: break-word; }
 #results-table th { background: #0b1220; }

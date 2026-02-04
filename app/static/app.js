@@ -5,6 +5,7 @@ const resultsBody = document.getElementById('results-body');
 // Dynamic Shortcut Hub
 const hubEl = document.getElementById('shortcut-hub');
 const actionsEl = document.getElementById('shortcut-actions');
+const busyEl = document.getElementById('busy-indicator');
 const ipsTextarea = document.getElementById('ips');
 const commandInput = document.getElementById('command');
 const runBtn = document.getElementById('run-btn');
@@ -454,6 +455,7 @@ function setDisabledState(disabled) {
   // Disable/enable category buttons and currently rendered sub-action buttons
   hubEl.querySelectorAll('button').forEach(b => { b.disabled = disabled; });
   actionsEl.querySelectorAll('button').forEach(b => { b.disabled = disabled; });
+  if (busyEl) busyEl.classList.toggle('hidden', !disabled);
   if (!disabled) {
     // Re-apply validation gating when re-enabling controls
     updateToolbarState();
