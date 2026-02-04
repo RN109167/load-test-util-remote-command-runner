@@ -7,17 +7,21 @@
   <link rel="stylesheet" href="/static/styles.css" />
   </head>
 <body>
+  <!-- App header: title and brief description -->
   <header>
     <h1>Remote Command Runner</h1>
     <p>Provide IPs and a command to run across hosts.</p>
   </header>
   <main>
+    <!-- Main inputs: IP addresses, command field, and Shortcut Hub -->
     <section class="card">
       <h2>Inputs</h2>
       <form id="run-form">
         <h3 class="toolbar-title">Shortcut Hub</h3>
+        <!-- Categories and actions rendered dynamically by app.js -->
         <div id="shortcut-hub" class="toolbar"></div>
         <div id="shortcut-actions" class="toolbar"></div>
+        <!-- Busy indicator: shown while operations are in progress -->
         <div id="busy-indicator" class="busy hidden" aria-live="polite" aria-atomic="true">
           <span class="spinner" aria-hidden="true"></span>
           <span class="busy-text">Working…</span>
@@ -36,13 +40,12 @@
         <div class="actions">
           <button type="submit" id="run-btn" disabled>Run</button>
         </div>
-        <!-- Hidden file input for upload -->
-        <input type="file" id="file-input" class="hidden" />
+        <!-- Removed unused hidden file input -->
         <div id="form-error" class="error hidden"></div>
       </form>
     </section>
 
-    <!-- Copy From VM Modal -->
+    <!-- Copy From VM Modal: pull a file from a source host and distribute to targets -->
     <div id="copy-modal" class="modal hidden">
       <div class="modal-content">
         <h3>Copy From VM</h3>
@@ -90,6 +93,7 @@
       </div>
     </div>
 
+    <!-- Results table: shows per-host status and outputs -->
     <section class="card">
       <h2>Results</h2>
       <table id="results-table">
@@ -107,7 +111,7 @@
     </section>
   </main>
 
-  <!-- Upload and Copy Files Modal -->
+  <!-- Upload and Copy Files Modal: upload a local file and place it on targets -->
   <div id="upload-modal" class="modal hidden">
     <div class="modal-content">
       <h3>Upload and Copy Files</h3>

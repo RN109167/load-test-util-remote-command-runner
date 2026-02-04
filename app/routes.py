@@ -31,6 +31,9 @@ def _valid_ipv4(ip: str) -> bool:
 
 @bp.route("/api/execute", methods=["POST"])
 def api_execute():
+    """Execute a shell command across target hosts.
+    Supports sync mode (immediate results) and async mode (pollable job).
+    """
     data = request.get_json(silent=True) or {}
     ips = data.get("ips") or []
     command = (data.get("command") or "").strip()
@@ -136,6 +139,7 @@ def api_execute():
 
 @bp.route("/api/job/<job_id>")
 def api_job(job_id):
+    """Return job status/results for a given job id, with truncated outputs for UI."""
     job = job_manager.get_job(job_id)
     if not job:
         return jsonify({"ok": False, "error": "Job not found"}), 404
@@ -157,6 +161,10 @@ def api_job(job_id):
 
 @bp.route("/api/upload-copy", methods=["POST"])
 def api_upload_copy():
+    """Upload a local file and place it on multiple target hosts.
+    Always uploads to /tmp then uses sudo to move, chown, and chmod at destination.
+    Optional owner/group are validated and applied per host.
+    """
     # Expect multipart/form-data with 'file' and 'ips' (JSON array or delimited string)
     if "file" not in request.files:
         return jsonify({"ok": False, "error": "No file uploaded"}), 400
@@ -180,7 +188,7 @@ def api_upload_copy():
     if invalid:
         return jsonify({"ok": False, "error": f"Invalid IPv4: {', '.join(invalid)}"}), 400
 
-    # Save uploaded file to instance/uploads
+    # Save uploaded file to a temp folder under instance/uploads
     uploads_root = os.path.join(current_app.instance_path, "uploads")
     os.makedirs(uploads_root, exist_ok=True)
     filename = file.filename or "uploaded_file"
@@ -199,7 +207,7 @@ def api_upload_copy():
     # Optional owner/group for chown
     owner = (request.form.get("owner") or "").strip()
     group = (request.form.get("group") or "").strip()
-    # Basic validation to avoid command injection
+    # Basic format validation to avoid command injection
     safe_re = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
     if owner and not safe_re.match(owner):
         return jsonify({"ok": False, "error": "Invalid owner format"}), 400
@@ -280,6 +288,10 @@ def api_upload_copy():
 
 @bp.route("/api/copy-from-vm", methods=["POST"])
 def api_copy_from_vm():
+    """Copy a file from a source VM to multiple target hosts.
+    Downloads to local temp, uploads to /tmp on targets, then sudo move/chown/chmod.
+    Optional owner/group are validated and applied per host.
+    """
     data = request.get_json(silent=True) or {}
     ips = data.get("ips") or []
     source = data.get("source") or {}
@@ -306,7 +318,7 @@ def api_copy_from_vm():
     if not src_user or not src_pass or not src_path:
         return jsonify({"ok": False, "error": "Source username, password, and path are required"}), 400
 
-    # Prepare temp download location
+    # Prepare temp download location (local server-side)
     uploads_root = os.path.join(current_app.instance_path, "uploads")
     os.makedirs(uploads_root, exist_ok=True)
     basename = os.path.basename(src_path) or "source_file"

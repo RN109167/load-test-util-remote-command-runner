@@ -1,8 +1,8 @@
 const form = document.getElementById('run-form');
 const formError = document.getElementById('form-error');
 const resultsBody = document.getElementById('results-body');
-// Integrated UI with backend: triggers jobs and polls status
-// Dynamic Shortcut Hub
+// App UI logic: renders the Shortcut Hub, handles command execution,
+// file operation modals, and polls job status from the backend.
 const hubEl = document.getElementById('shortcut-hub');
 const actionsEl = document.getElementById('shortcut-actions');
 const busyEl = document.getElementById('busy-indicator');
@@ -10,7 +10,7 @@ const ipsTextarea = document.getElementById('ips');
 const commandInput = document.getElementById('command');
 const runBtn = document.getElementById('run-btn');
 
-// Shortcut command definitions
+// Shortcut command definitions: grouped actions the user can run remotely
 const SHORTCUTS = {
   Concentrator: {
     Start: 'echo palmedia1 | sudo -S systemctl start onelink-concentrator',
@@ -48,7 +48,6 @@ const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload
 let selectedCategory = null;
 
 let currentIPs = [];
-// No payload export/state needed in UI-only phase
 
 function isValidIPv4(ip) {
   // Matches 0-255.0-255.0-255.0-255
@@ -72,6 +71,7 @@ function sanitizeIPs(text) {
     .filter(s => s.length > 0);
 }
 
+// Render the results table for the provided IPs and job data
 function renderTable(ips, job) {
   resultsBody.innerHTML = '';
   ips.forEach(ip => {
@@ -112,7 +112,7 @@ function renderTable(ips, job) {
   });
 }
 
-// Generic stdout formatter: try to render columns when output has 2+ space or tab-separated fields
+// Render stdout/stderr: detect tabular output and show it in a grid; otherwise use preformatted text
 function renderStdout(text) {
   const rows = parseColumns(text);
   if (rows.length > 0) {
@@ -123,6 +123,7 @@ function renderStdout(text) {
   return pre;
 }
 
+// Parse text into rows/columns when there are 2+ spaces or tab separators
 function parseColumns(text) {
   const lines = text.split(/\r?\n/).map(l => l.trim());
   const rows = [];
@@ -143,6 +144,7 @@ function parseColumns(text) {
   });
 }
 
+// Build an HTML table from rows of columns
 function renderColumnsTable(rows) {
   const table = document.createElement('table');
   table.className = 'stdout-table';
@@ -160,6 +162,7 @@ function renderColumnsTable(rows) {
   return table;
 }
 
+// Validate IPs and enable/disable actions accordingly
 function updateToolbarState() {
   const ips = sanitizeIPs(ipsTextarea.value);
   const allValid = validateAllIPs(ips);
@@ -177,6 +180,7 @@ function updateToolbarState() {
   }
 }
 
+// Confirm and start a command across selected IPs
 async function triggerCommand(label, command) {
   formError.classList.add('hidden');
   const ips = sanitizeIPs(ipsTextarea.value);
@@ -195,7 +199,7 @@ updateToolbarState();
 ipsTextarea.addEventListener('input', updateToolbarState);
 commandInput && commandInput.addEventListener('input', updateToolbarState);
 
-// Render category buttons
+// Render category buttons in the Shortcut Hub
 function renderCategories() {
   hubEl.innerHTML = '';
   CATEGORY_ORDER.forEach(cat => {
@@ -209,6 +213,7 @@ function renderCategories() {
   });
 }
 
+// Toggle active category and render its actions
 function toggleCategory(cat) {
   if (selectedCategory === cat) {
     selectedCategory = null;
@@ -221,6 +226,7 @@ function toggleCategory(cat) {
   renderActions(cat);
 }
 
+// Render action buttons for the selected category
 function renderActions(cat) {
   actionsEl.innerHTML = '';
   const spec = SHORTCUTS[cat];
@@ -257,13 +263,14 @@ function renderActions(cat) {
   });
 }
 
+// Disable/enable all hub and action buttons; toggle the busy indicator
 function setActionsDisabled(disabled) {
   actionsEl.querySelectorAll('button').forEach(b => b.disabled = disabled);
 }
 
 renderCategories();
 
-// Upload & copy flow (modal)
+// Upload & copy flow (modal): send selected file to hosts with optional destination/owner/group
 const uploadModal = document.getElementById('upload-modal');
 const uploadForm = document.getElementById('upload-form');
 const uploadError = document.getElementById('upload-error');
@@ -336,7 +343,7 @@ uploadForm && uploadForm.addEventListener('submit', async (e) => {
   }
 });
 
-// Copy From VM modal handlers
+// Copy From VM modal: fetch a file from a source VM and distribute to hosts
 const copyModal = document.getElementById('copy-modal');
 const copyForm = document.getElementById('copy-form');
 const copyError = document.getElementById('copy-error');
@@ -421,6 +428,7 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
     if (copyForm) copyForm.reset();
   }
 });
+// Execute arbitrary command via the main form
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   formError.classList.add('hidden');
@@ -443,8 +451,9 @@ form.addEventListener('submit', async (e) => {
   await startJob(ips, command);
 });
 
+// Start a backend job and poll status if needed
 async function startJob(ips, command) {
-  // Disable controls until job completes (statuses received)
+  // Disable controls until job completes (or polling finishes)
   setDisabledState(true);
   try {
     const res = await fetch('/api/execute', {
@@ -463,10 +472,10 @@ async function startJob(ips, command) {
     currentIPs = ips;
     if (data.results) {
       renderTable(currentIPs, { statuses: data.statuses || {}, results: data.results, completed: data.completed });
-      // Immediate/sync execution done; re-enable controls
+      // Sync execution: results returned immediately; re-enable controls
       setDisabledState(false);
     } else if (data.jobId) {
-      // Fallback to async job mode
+      // Async execution: show queued state and begin polling
       renderTable(currentIPs, { statuses: Object.fromEntries(ips.map(ip => [ip, 'queued'])) });
       await pollJob(data.jobId);
     }
