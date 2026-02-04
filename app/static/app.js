@@ -36,10 +36,15 @@ const SHORTCUTS = {
     Start: 'sh start-nconnectmock.sh',
     Stop: 'sh stop-nconnectmock.sh',
   },
+  'MySQL': {
+    Start: 'echo palmedia1 | sudo -S systemctl start mysqld',
+    Stop: 'echo palmedia1 | sudo -S systemctl stop mysqld',
+    Restart: 'echo palmedia1 | sudo -S systemctl restart mysqld',
+  },
   'File Operations': ['Copy From VM', 'Upload and Copy Files'],
 };
 
-const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnect Mock', 'File Operations'];
+const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnect Mock', 'MySQL', 'File Operations'];
 let selectedCategory = null;
 
 let currentIPs = [];
