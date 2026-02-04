@@ -191,6 +191,7 @@ def api_upload_copy():
     password = current_app.config.get("SSH_PASSWORD", "palmedia1")
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
+    timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 20))
     # Optional destination directory
     dest_dir = (request.form.get("destDir") or "").strip()
     if not dest_dir:
@@ -205,14 +206,27 @@ def api_upload_copy():
             transport.connect(username=username, password=password)
             sftp = paramiko.SFTPClient.from_transport(transport)
             try:
-                # Destination path
                 dest = f"{dest_dir.rstrip('/')}/{filename}"
-                sftp.put(tmp_path, dest)
-                # Set permissions to 0644
-                try:
-                    sftp.chmod(dest, 0o644)
-                except Exception:
-                    pass
+                # Always upload to /tmp first, then move with sudo to destination
+                tmp_remote = f"/tmp/{uuid.uuid4()}-{filename}"
+                sftp.put(tmp_path, tmp_remote)
+                move_cmd = (
+                    f'echo {password} | sudo -S mkdir -p "{dest_dir}" && '
+                    f'echo {password} | sudo -S mv -f "{tmp_remote}" "{dest}" && '
+                    f'echo {password} | sudo -S chown {username}:{username} "{dest}" && '
+                    f'echo {password} | sudo -S chmod 0644 "{dest}"'
+                )
+                res = execute_command_on_host(
+                    host=ip,
+                    port=port,
+                    username=username,
+                    password=password,
+                    private_key=None,
+                    command=move_cmd,
+                    timeout=timeout,
+                )
+                if not res.get("ok"):
+                    raise Exception(res.get("stderr") or res.get("error") or "Move with sudo failed")
                 statuses[ip] = "completed"
                 results[ip] = {"ok": True, "dest": dest}
             finally:
@@ -310,6 +324,7 @@ def api_copy_from_vm():
     password = current_app.config.get("SSH_PASSWORD", "palmedia1")
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
+    timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 20))
     if not dest_dir:
         dest_dir = f"/home/{username}"
 
@@ -323,11 +338,26 @@ def api_copy_from_vm():
             sftp = paramiko.SFTPClient.from_transport(transport)
             try:
                 dest = f"{dest_dir.rstrip('/')}/{basename}"
-                sftp.put(tmp_path, dest)
-                try:
-                    sftp.chmod(dest, 0o644)
-                except Exception:
-                    pass
+                # Always upload to /tmp first, then move with sudo to destination
+                tmp_remote = f"/tmp/{uuid.uuid4()}-{basename}"
+                sftp.put(tmp_path, tmp_remote)
+                move_cmd = (
+                    f'echo {password} | sudo -S mkdir -p "{dest_dir}" && '
+                    f'echo {password} | sudo -S mv -f "{tmp_remote}" "{dest}" && '
+                    f'echo {password} | sudo -S chown {username}:{username} "{dest}" && '
+                    f'echo {password} | sudo -S chmod 0644 "{dest}"'
+                )
+                res = execute_command_on_host(
+                    host=ip,
+                    port=port,
+                    username=username,
+                    password=password,
+                    private_key=None,
+                    command=move_cmd,
+                    timeout=timeout,
+                )
+                if not res.get("ok"):
+                    raise Exception(res.get("stderr") or res.get("error") or "Move with sudo failed")
                 statuses[ip] = "completed"
                 results[ip] = {"ok": True, "dest": dest}
             finally:
