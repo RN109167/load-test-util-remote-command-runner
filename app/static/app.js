@@ -223,6 +223,7 @@ function renderActions(cat) {
     const btn = document.createElement('button');
     btn.textContent = label;
     btn.type = 'button';
+    btn.className = 'action-btn';
     // Disable until IPs valid
     const ips = sanitizeIPs(ipsTextarea.value);
     btn.disabled = !validateAllIPs(ips);

@@ -20,7 +20,10 @@ button:disabled { background: #334155; cursor: not-allowed; }
 .error { margin-top: 10px; padding: 8px; background: #7f1d1d; border: 1px solid #991b1b; border-radius: 8px; }
 
 /* Shortcut Hub */
-.hub-btn.selected { background: #0ea5e9; }
+.hub-btn.selected { background: #1e40af; }
+.action-btn { background: transparent; color: #93c5fd; border: 1px solid #2563eb; font-size: 13px; padding: 8px 12px; }
+.action-btn:hover { background: rgba(37,99,235,0.15); color: #ffffff; border-color: #3b82f6; }
+.action-btn:disabled { background: transparent; color: #9ca3af; border-color: #334155; cursor: not-allowed; }
 
 #results-table { width: 100%; border-collapse: collapse; margin-top: 12px; table-layout: fixed; }
 #results-table th, #results-table td { border: 1px solid #334155; padding: 8px; vertical-align: top; word-wrap: break-word; }
