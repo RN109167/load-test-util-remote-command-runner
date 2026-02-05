@@ -17,6 +17,25 @@ A simple web app to run shell commands across multiple hosts and perform file op
   - Support `sudo` with the provided password.
   - Have the specified `owner` and `group` (if you choose to override ownership).
 
+### Prerequisites on Target VMs
+- Shell scripts expected by Shortcut Hub:
+  - Unload scripts in home directory: `~/start-unload.sh`, `~/stop-unload.sh`.
+  - nConnect Mock scripts in home directory: `~/start-nconnectmock.sh`, `~/stop-nconnectmock.sh`.
+  - Ensure each is executable (`chmod +x`), and paths match the Shortcut Hub labels.
+- Systemd service names must exist for service shortcuts:
+  - `onelink-concentrator`, `onelink-appserver`, `onelink-nconnect`, `mysqld`.
+  - Verify with `systemctl status <service>` on each VM.
+- Sudo availability and password:
+  - The app invokes `sudo` for directory creation, file moves, ownership and permissions.
+  - The SSH user must have `sudo` access; consider `NOPASSWD` policies for production.
+- Owner/Group existence:
+  - If you specify `owner`/`group` in file operations, those must exist on each target VM (validated via `id -u` and `getent group`).
+  - Leave empty to default to the SSH username.
+- Temporary directory access:
+  - `/tmp` must be writable on each VM; uploads are staged to `/tmp` before `sudo mv` into the destination.
+- PATH and shell:
+  - Commands run via `/bin/bash -lc` with `cd "$HOME"` to mimic interactive environments.
+
 ### Quick Start
 1. Create a virtual environment (recommended) and install dependencies:
    ```bash
