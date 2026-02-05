@@ -8,7 +8,7 @@ def create_app():
         SECRET_KEY=os.environ.get("SECRET_KEY"),
         JOB_CLEANUP_SECONDS=int(os.environ.get("JOB_CLEANUP_SECONDS", "3600")),
         SSH_DEFAULT_PORT=int(os.environ.get("SSH_DEFAULT_PORT", "22")),
-        SSH_TIMEOUT_SECONDS=int(os.environ.get("SSH_TIMEOUT_SECONDS", "20")),
+        SSH_TIMEOUT_SECONDS=int(os.environ.get("SSH_TIMEOUT_SECONDS", "30")),
         MAX_PARALLEL=int(os.environ.get("MAX_PARALLEL", "30")),
         SSH_USERNAME=os.environ.get("SSH_USERNAME", "user"),
         SSH_PASSWORD=os.environ.get("SSH_PASSWORD", "palmedia1"),

@@ -53,7 +53,7 @@ def api_execute():
         return jsonify({"ok": False, "errors": errors}), 400
 
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
-    timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 20))
+    timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 30))
     username = current_app.config.get("SSH_USERNAME", "user")
     password = current_app.config.get("SSH_PASSWORD", "palmedia1")
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
@@ -199,7 +199,7 @@ def api_upload_copy():
     password = current_app.config.get("SSH_PASSWORD", "palmedia1")
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
-    timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 20))
+    timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 30))
     # Optional destination directory
     dest_dir = (request.form.get("destDir") or "").strip()
     if not dest_dir:
@@ -354,7 +354,7 @@ def api_copy_from_vm():
     password = current_app.config.get("SSH_PASSWORD", "palmedia1")
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
-    timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 20))
+    timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 30))
     # Basic validation to avoid command injection
     safe_re = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
     if owner and not safe_re.match(owner):

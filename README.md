@@ -76,7 +76,7 @@ A simple web app to run shell commands across multiple hosts and perform file op
 - `SSH_USERNAME` — Username for target hosts (default: `user`).
 - `SSH_PASSWORD` — Password for target hosts (used for SSH and `sudo`).
 - `SSH_DEFAULT_PORT` — SSH port (default: `22`).
-- `SSH_TIMEOUT_SECONDS` — SSH/SFTP timeout (default: `20`).
+- `SSH_TIMEOUT_SECONDS` — SSH/SFTP timeout (default: `30`).
 - `MAX_PARALLEL` — Max concurrent operations (default: `30`).
 - `SECRET_KEY` — Flask session key.
 - `MAX_CONTENT_LENGTH` — Max upload size.
