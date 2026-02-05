@@ -1,3 +1,12 @@
+/* Success banner styling */
+#form-success {
+  color: #21a453; /* green text */
+  background-color: rgba(33, 164, 83, 0.12);
+  border: 1px solid rgba(33, 164, 83, 0.6);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-top: 12px; /* space below Run button */
+}
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #0f172a; color: #e5e7eb; }
@@ -59,3 +68,6 @@ footer { padding: 24px; color: #94a3b8; }
 .file-button:hover { background: #1d4ed8; }
 .file-name { font-size: 13px; }
 .muted { color: #9ca3af; }
+.ghost-button { background: transparent; color: #e5e7eb; border: 1px solid #475569; border-radius: 8px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
+.ghost-button:hover { background: rgba(71,85,105,0.25); }
+

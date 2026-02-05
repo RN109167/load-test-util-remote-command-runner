@@ -1,5 +1,6 @@
 const form = document.getElementById('run-form');
 const formError = document.getElementById('form-error');
+const formSuccess = document.getElementById('form-success');
 const resultsBody = document.getElementById('results-body');
 // App UI logic: renders the Shortcut Hub, handles command execution,
 // file operation modals, and polls job status from the backend.
@@ -7,8 +8,21 @@ const hubEl = document.getElementById('shortcut-hub');
 const actionsEl = document.getElementById('shortcut-actions');
 const busyEl = document.getElementById('busy-indicator');
 const ipsTextarea = document.getElementById('ips');
+const ipsFileInput = document.getElementById('ips-file');
+const ipsFileBtn = document.getElementById('ips-file-btn');
+const ipsFileName = document.getElementById('ips-file-name');
+const ipsClearBtn = document.getElementById('ips-clear-btn');
 const commandInput = document.getElementById('command');
 const runBtn = document.getElementById('run-btn');
+
+// Common string constants (used 3+ times)
+const STRINGS = {
+  SUCCESS_ALL: 'All hosts completed successfully.',
+  FAILURE_SOME: 'One or more hosts failed. Please review results.',
+  NETWORK_ERROR_PREFIX: 'Network error: ',
+  NO_FILE_SELECTED: 'No file selected',
+  FILE_OPERATIONS: 'File Operations',
+};
 
 // Shortcut command definitions: grouped actions the user can run remotely
 const SHORTCUTS = {
@@ -41,13 +55,56 @@ const SHORTCUTS = {
     Stop: 'echo palmedia1 | sudo -S systemctl stop mysqld',
     Restart: 'echo palmedia1 | sudo -S systemctl restart mysqld',
   },
-  'File Operations': ['Copy From VM', 'Upload and Copy Files'],
+  [STRINGS.FILE_OPERATIONS]: ['Copy From VM', 'Upload and Copy Files'],
 };
 
-const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnect Mock', 'MySQL', 'File Operations'];
+const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnect Mock', 'MySQL', STRINGS.FILE_OPERATIONS];
 let selectedCategory = null;
 
 let currentIPs = [];
+
+// Timers for fading banners
+let successTimer = null;
+let errorTimer = null;
+
+function clearBannerTimer(timerRef) {
+  if (timerRef) {
+    clearTimeout(timerRef);
+  }
+}
+
+function fadeOutBanner(el, durationMs = 300) {
+  if (!el) return;
+  el.style.transition = `opacity ${durationMs}ms ease`;
+  el.style.opacity = '0';
+  setTimeout(() => {
+    el.classList.add('hidden');
+    el.style.opacity = '';
+    el.style.transition = '';
+  }, durationMs);
+}
+
+function showSuccessBanner(text, displayMs = 5000) {
+  if (!formSuccess) return;
+  // Clear any pending success fade-outs and hide error
+  clearBannerTimer(successTimer);
+  formError && formError.classList.add('hidden');
+  formSuccess.textContent = text || STRINGS.SUCCESS_ALL;
+  formSuccess.classList.remove('hidden');
+  formSuccess.style.opacity = '1';
+  successTimer = setTimeout(() => fadeOutBanner(formSuccess), displayMs);
+}
+
+function showErrorBanner(text, displayMs = 5000) {
+  if (!formError) return;
+  // Clear any pending error fade-outs and hide success
+  clearBannerTimer(errorTimer);
+  formSuccess && formSuccess.classList.add('hidden');
+  formError.textContent = text || STRINGS.FAILURE_SOME;
+  formError.classList.remove('hidden');
+  formError.style.opacity = '1';
+  errorTimer = setTimeout(() => fadeOutBanner(formError), displayMs);
+}
 
 function isValidIPv4(ip) {
   // Matches 0-255.0-255.0-255.0-255
@@ -171,10 +228,15 @@ function updateToolbarState() {
   const cmdFilled = (commandInput?.value || '').trim().length > 0;
   if (runBtn) runBtn.disabled = !(allValid && cmdFilled);
 
+  // Disable Clear IPs button when textarea is empty
+  const hasIpsText = (ipsTextarea?.value || '').trim().length > 0;
+  if (ipsClearBtn) ipsClearBtn.disabled = !hasIpsText;
+
   if (!allValid && ips.length > 0) {
     const invalid = ips.filter(ip => !isValidIPv4(ip));
     formError.textContent = `Invalid IP format: ${invalid.join(', ')}`;
     formError.classList.remove('hidden');
+    formSuccess && formSuccess.classList.add('hidden');
   } else {
     formError.classList.add('hidden');
   }
@@ -198,6 +260,66 @@ async function triggerCommand(label, command) {
 updateToolbarState();
 ipsTextarea.addEventListener('input', updateToolbarState);
 commandInput && commandInput.addEventListener('input', updateToolbarState);
+
+// Upload IPs file: parse .txt/.csv and fill textarea
+ipsFileBtn && ipsFileBtn.addEventListener('click', () => {
+  ipsFileInput && ipsFileInput.click();
+});
+
+ipsFileInput && ipsFileInput.addEventListener('change', () => {
+  formError.classList.add('hidden');
+  const file = ipsFileInput.files && ipsFileInput.files[0];
+  if (!file) {
+    if (ipsFileName) { ipsFileName.textContent = STRINGS.NO_FILE_SELECTED; ipsFileName.classList.add('muted'); }
+    return;
+  }
+  const extOk = /\.txt$|\.csv$/i.test(file.name) || (file.type || '').includes('text');
+  if (!extOk) {
+    formError.textContent = 'Please upload a .txt or .csv file containing IP addresses.';
+    formError.classList.remove('hidden');
+    ipsFileInput.value = '';
+    if (ipsFileName) { ipsFileName.textContent = STRINGS.NO_FILE_SELECTED; ipsFileName.classList.add('muted'); }
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const text = String(reader.result || '');
+      // Split by newline/comma/whitespace and validate IPv4 format
+      const tokens = sanitizeIPs(text);
+      const invalid = tokens.filter(ip => !isValidIPv4(ip));
+      if (!tokens.length || invalid.length) {
+        formError.textContent = 'File must contain valid IPv4s separated by new lines or commas.';
+        formError.classList.remove('hidden');
+        return;
+      }
+      // Fill textarea with one IP per line
+      ipsTextarea.value = tokens.join('\n');
+      if (ipsFileName) {
+        ipsFileName.textContent = `${file.name} — ${tokens.length} IP(s)`;
+        ipsFileName.classList.remove('muted');
+      }
+      updateToolbarState();
+    } catch (err) {
+      formError.textContent = 'Unable to parse IP file.';
+      formError.classList.remove('hidden');
+    }
+  };
+  reader.onerror = () => {
+    formError.textContent = 'Failed to read IP file.';
+    formError.classList.remove('hidden');
+  };
+  reader.readAsText(file);
+});
+
+// Clear IPs button: empties the textarea and resets state
+ipsClearBtn && ipsClearBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  formError.classList.add('hidden');
+  ipsTextarea.value = '';
+  if (ipsFileName) { ipsFileName.textContent = STRINGS.NO_FILE_SELECTED; ipsFileName.classList.add('muted'); }
+  updateToolbarState();
+});
 
 // Render category buttons in the Shortcut Hub
 function renderCategories() {
@@ -242,7 +364,7 @@ function renderActions(cat) {
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (cat === 'File Operations') {
+      if (cat === STRINGS.FILE_OPERATIONS) {
         if (label === 'Copy From VM') {
           const copyModal = document.getElementById('copy-modal');
           const copyError = document.getElementById('copy-error');
@@ -287,6 +409,8 @@ uploadCancelBtn && uploadCancelBtn.addEventListener('click', () => {
   uploadForm && uploadForm.reset();
   if (uploadError) uploadError.classList.add('hidden');
   if (uploadFileName) uploadFileName.textContent = 'No file selected';
+  // Use constant string
+  if (uploadFileName) uploadFileName.textContent = STRINGS.NO_FILE_SELECTED;
 });
 // Enhanced file input: trigger native picker and show selected filename
 uploadFileBtn && uploadFileBtn.addEventListener('click', () => {
@@ -301,24 +425,29 @@ uploadFileInput && uploadFileInput.addEventListener('change', () => {
     uploadFileName.textContent = `${f.name} (${sizeMB} MB)`;
     uploadFileName.classList.remove('muted');
   } else {
-    uploadFileName.textContent = 'No file selected';
+    uploadFileName.textContent = STRINGS.NO_FILE_SELECTED;
     uploadFileName.classList.add('muted');
   }
 });
 
+
 uploadForm && uploadForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  // Close the dialog immediately on submit
+  uploadModal.classList.add('hidden');
   uploadError.classList.add('hidden');
+  formSuccess && formSuccess.classList.add('hidden');
+  // Also stop any fade timers
+  clearBannerTimer(successTimer);
+  clearBannerTimer(errorTimer);
   const ips = sanitizeIPs(ipsTextarea.value);
   if (!validateAllIPs(ips)) {
-    uploadError.textContent = ips.length ? 'Please correct invalid IPs before uploading.' : 'Please provide at least one IP address.';
-    uploadError.classList.remove('hidden');
+    // Keep processing status in results; dialog remains closed
     return;
   }
   const file = uploadFileInput && uploadFileInput.files && uploadFileInput.files[0];
   if (!file) {
-    uploadError.textContent = 'Please select a file to upload.';
-    uploadError.classList.remove('hidden');
+    // No file selected; dialog remains closed
     return;
   }
   const destDir = (uploadDestInput?.value || '').trim();
@@ -340,11 +469,9 @@ uploadForm && uploadForm.addEventListener('submit', async (e) => {
     const res = await fetch('/api/upload-copy', { method: 'POST', body: formData });
     const data = await res.json();
     if (!data.ok) {
-      uploadError.textContent = data.error || 'Upload failed';
-      uploadError.classList.remove('hidden');
-      return;
+      // Surface backend error on the main screen
+      showErrorBanner(data.error || 'Upload failed');
     }
-    uploadModal.classList.add('hidden');
     currentIPs = ips;
     const job = { statuses: data.statuses || {}, results: {} };
     for (const ip of ips) {
@@ -354,9 +481,17 @@ uploadForm && uploadForm.addEventListener('submit', async (e) => {
       if (r && r.error) job.results[ip].stderr = r.error;
     }
     renderTable(currentIPs, job);
+    // Show a global message if any host failed
+    const statuses = data.statuses || {};
+    const anyFailed = ips.some(ip => statuses[ip] !== 'completed');
+    if (anyFailed) {
+      showErrorBanner(STRINGS.FAILURE_SOME);
+    } else {
+      showSuccessBanner(STRINGS.SUCCESS_ALL);
+    }
   } catch (err) {
-    uploadError.textContent = 'Network error: ' + err.message;
-    uploadError.classList.remove('hidden');
+    // Network error; modal remains closed and error shown on main screen
+    showErrorBanner(STRINGS.NETWORK_ERROR_PREFIX + err.message);
   } finally {
     setDisabledState(false);
     uploadForm && uploadForm.reset();
@@ -385,11 +520,15 @@ copyCancelBtn && copyCancelBtn.addEventListener('click', () => {
 
 copyForm && copyForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  // Close the dialog immediately on submit
+  copyModal.classList.add('hidden');
   copyError.classList.add('hidden');
+  formSuccess && formSuccess.classList.add('hidden');
+  clearBannerTimer(successTimer);
+  clearBannerTimer(errorTimer);
   const ips = sanitizeIPs(ipsTextarea.value);
   if (!validateAllIPs(ips)) {
-    copyError.textContent = ips.length ? 'Please correct invalid target IPs.' : 'Please provide target IPs in the main form.';
-    copyError.classList.remove('hidden');
+    // Invalid targets; dialog remains closed
     return;
   }
   const srcIp = (srcIpInput?.value || '').trim();
@@ -398,13 +537,9 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
   const srcPort = Number(srcPortInput?.value || 22);
   const srcPath = (srcPathInput?.value || '').trim();
   if (!isValidIPv4(srcIp)) {
-    copyError.textContent = 'Invalid source IP.';
-    copyError.classList.remove('hidden');
     return;
   }
   if (!srcUser || !srcPass || !srcPath) {
-    copyError.textContent = 'Username, password, and source file path are required.';
-    copyError.classList.remove('hidden');
     return;
   }
   const confirmed = window.confirm(`Copy '${srcPath}' from ${srcIp} to ${ips.length} host(s)?`);
@@ -425,11 +560,9 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
     });
     const data = await res.json();
     if (!data.ok) {
-      copyError.textContent = data.error || 'Copy failed';
-      copyError.classList.remove('hidden');
-      return;
+      // Surface backend error on the main screen
+      showErrorBanner(data.error || 'Copy failed');
     }
-    copyModal.classList.add('hidden');
     currentIPs = ips;
     const job = { statuses: data.statuses || {}, results: {} };
     for (const ip of ips) {
@@ -439,9 +572,17 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
       if (r && r.error) job.results[ip].stderr = r.error;
     }
     renderTable(currentIPs, job);
+    // Show a global message if any host failed
+    const statuses = data.statuses || {};
+    const anyFailed = ips.some(ip => statuses[ip] !== 'completed');
+    if (anyFailed) {
+      showErrorBanner(STRINGS.FAILURE_SOME);
+    } else {
+      showSuccessBanner(STRINGS.SUCCESS_ALL);
+    }
   } catch (err) {
-    copyError.textContent = 'Network error: ' + err.message;
-    copyError.classList.remove('hidden');
+    // Network error; modal remains closed and error shown on main screen
+    showErrorBanner(STRINGS.NETWORK_ERROR_PREFIX + err.message);
   } finally {
     setDisabledState(false);
     // Reset form inputs
@@ -475,6 +616,7 @@ form.addEventListener('submit', async (e) => {
 async function startJob(ips, command) {
   // Disable controls until job completes (or polling finishes)
   setDisabledState(true);
+  formSuccess && formSuccess.classList.add('hidden');
   try {
     const res = await fetch('/api/execute', {
       method: 'POST',
@@ -500,7 +642,7 @@ async function startJob(ips, command) {
       await pollJob(data.jobId);
     }
   } catch (err) {
-    formError.textContent = 'Network error: ' + err.message;
+    formError.textContent = STRINGS.NETWORK_ERROR_PREFIX + err.message;
     formError.classList.remove('hidden');
   } finally {
     // Controls remain disabled for async; pollJob will re-enable on completion
@@ -510,8 +652,16 @@ async function startJob(ips, command) {
 function setDisabledState(disabled) {
   if (runBtn) runBtn.disabled = disabled;
   // Disable/enable category buttons and currently rendered sub-action buttons
-  hubEl.querySelectorAll('button').forEach(b => { b.disabled = disabled; });
-  actionsEl.querySelectorAll('button').forEach(b => { b.disabled = disabled; });
+  hubEl.querySelectorAll('button').forEach(b => {
+    // Keep 'File Operations' category enabled even while busy
+    const isFileOpsCat = (b.textContent || '').trim() === STRINGS.FILE_OPERATIONS;
+    b.disabled = disabled && !isFileOpsCat;
+  });
+  actionsEl.querySelectorAll('button').forEach(b => {
+    // When busy, only allow actions if current category is 'File Operations'
+    const allowActions = selectedCategory === STRINGS.FILE_OPERATIONS;
+    b.disabled = disabled && !allowActions;
+  });
   if (busyEl) busyEl.classList.toggle('hidden', !disabled);
   if (!disabled) {
     // Re-apply validation gating when re-enabling controls
