@@ -277,6 +277,8 @@ const uploadError = document.getElementById('upload-error');
 const uploadCancelBtn = document.getElementById('upload-cancel');
 const uploadDestInput = document.getElementById('upload-dest-dir');
 const uploadFileInput = document.getElementById('upload-file');
+const uploadFileBtn = document.getElementById('upload-file-btn');
+const uploadFileName = document.getElementById('upload-file-name');
 const uploadOwnerInput = document.getElementById('upload-owner');
 const uploadGroupInput = document.getElementById('upload-group');
 
@@ -284,6 +286,24 @@ uploadCancelBtn && uploadCancelBtn.addEventListener('click', () => {
   uploadModal.classList.add('hidden');
   uploadForm && uploadForm.reset();
   if (uploadError) uploadError.classList.add('hidden');
+  if (uploadFileName) uploadFileName.textContent = 'No file selected';
+});
+// Enhanced file input: trigger native picker and show selected filename
+uploadFileBtn && uploadFileBtn.addEventListener('click', () => {
+  uploadFileInput && uploadFileInput.click();
+});
+
+uploadFileInput && uploadFileInput.addEventListener('change', () => {
+  const f = uploadFileInput.files && uploadFileInput.files[0];
+  if (!uploadFileName) return;
+  if (f) {
+    const sizeMB = (f.size / (1024 * 1024)).toFixed(1);
+    uploadFileName.textContent = `${f.name} (${sizeMB} MB)`;
+    uploadFileName.classList.remove('muted');
+  } else {
+    uploadFileName.textContent = 'No file selected';
+    uploadFileName.classList.add('muted');
+  }
 });
 
 uploadForm && uploadForm.addEventListener('submit', async (e) => {

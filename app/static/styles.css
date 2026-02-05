@@ -51,3 +51,11 @@ footer { padding: 24px; color: #94a3b8; }
 .modal.hidden { display: none; }
 .modal-content { background: #111827; border: 1px solid #374151; border-radius: 12px; padding: 16px; width: min(720px, 92vw); }
 .modal-content h3 { margin: 0 0 12px; }
+
+/* Enhanced file picker */
+.file-input-hidden { display: none; }
+.file-picker { display: flex; align-items: center; gap: 10px; }
+.file-button { background: #2563eb; color: white; border: none; border-radius: 8px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
+.file-button:hover { background: #1d4ed8; }
+.file-name { font-size: 13px; }
+.muted { color: #9ca3af; }

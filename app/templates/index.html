@@ -125,7 +125,11 @@
           </label>
           <label>
             Select File
-            <input type="file" id="upload-file" />
+            <input type="file" id="upload-file" class="file-input-hidden" />
+            <div class="file-picker">
+              <button type="button" id="upload-file-btn" class="file-button">Choose File</button>
+              <span id="upload-file-name" class="file-name muted">No file selected</span>
+            </div>
           </label>
           <label>
             Owner (optional)
