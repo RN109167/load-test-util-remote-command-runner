@@ -412,8 +412,6 @@ uploadCancelBtn && uploadCancelBtn.addEventListener('click', () => {
   uploadModal.classList.add('hidden');
   uploadForm && uploadForm.reset();
   if (uploadError) uploadError.classList.add('hidden');
-  if (uploadFileName) uploadFileName.textContent = 'No file selected';
-  // Use constant string
   if (uploadFileName) uploadFileName.textContent = STRINGS.NO_FILE_SELECTED;
 });
 // Enhanced file input: trigger native picker and show selected filename
