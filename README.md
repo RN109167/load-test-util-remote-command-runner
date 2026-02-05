@@ -78,7 +78,6 @@ A simple web app to run shell commands across multiple hosts and perform file op
 - `SSH_DEFAULT_PORT` — SSH port (default: `22`).
 - `SSH_TIMEOUT_SECONDS` — SSH/SFTP timeout (default: `30`).
 - `MAX_PARALLEL` — Max concurrent operations (default: `30`).
-- `SECRET_KEY` — Flask session key.
 - `MAX_CONTENT_LENGTH` — Max upload size.
 
 ### Development
@@ -200,7 +199,6 @@ script_util/
 ## Security & Production
 - Known hosts: currently accepts unknown host keys automatically; configure host key management for production.
 - Use a production WSGI server behind a reverse proxy (gunicorn/waitress + nginx) for deployment.
- - Set `SECRET_KEY` via environment in production.
 
 ## FAQ
 - Can it ssh into 30 VMs? Yes — set `MAX_PARALLEL=30` (subject to network/host limits).
