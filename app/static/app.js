@@ -300,6 +300,8 @@ ipsFileInput && ipsFileInput.addEventListener('change', () => {
         ipsFileName.classList.remove('muted');
       }
       updateToolbarState();
+      // Reset file input to allow re-selecting the same file triggering 'change'
+      ipsFileInput.value = '';
     } catch (err) {
       formError.textContent = 'Unable to parse IP file.';
       formError.classList.remove('hidden');
@@ -318,6 +320,8 @@ ipsClearBtn && ipsClearBtn.addEventListener('click', (e) => {
   formError.classList.add('hidden');
   ipsTextarea.value = '';
   if (ipsFileName) { ipsFileName.textContent = STRINGS.NO_FILE_SELECTED; ipsFileName.classList.add('muted'); }
+  // Clear file input so re-uploading the same file triggers 'change'
+  if (ipsFileInput) ipsFileInput.value = '';
   updateToolbarState();
 });
 
@@ -652,16 +656,8 @@ async function startJob(ips, command) {
 function setDisabledState(disabled) {
   if (runBtn) runBtn.disabled = disabled;
   // Disable/enable category buttons and currently rendered sub-action buttons
-  hubEl.querySelectorAll('button').forEach(b => {
-    // Keep 'File Operations' category enabled even while busy
-    const isFileOpsCat = (b.textContent || '').trim() === STRINGS.FILE_OPERATIONS;
-    b.disabled = disabled && !isFileOpsCat;
-  });
-  actionsEl.querySelectorAll('button').forEach(b => {
-    // When busy, only allow actions if current category is 'File Operations'
-    const allowActions = selectedCategory === STRINGS.FILE_OPERATIONS;
-    b.disabled = disabled && !allowActions;
-  });
+  hubEl.querySelectorAll('button').forEach(b => { b.disabled = disabled; });
+  actionsEl.querySelectorAll('button').forEach(b => { b.disabled = disabled; });
   if (busyEl) busyEl.classList.toggle('hidden', !disabled);
   if (!disabled) {
     // Re-apply validation gating when re-enabling controls
