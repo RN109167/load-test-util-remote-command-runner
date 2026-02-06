@@ -22,6 +22,7 @@ const STRINGS = {
   NETWORK_ERROR_PREFIX: 'Network error: ',
   NO_FILE_SELECTED: 'No file selected',
   FILE_OPERATIONS: 'File Operations',
+  GENERATE_CERT: 'Generate Certificate',
 };
 
 // Shortcut command definitions: grouped actions the user can run remotely
@@ -58,7 +59,7 @@ const SHORTCUTS = {
   [STRINGS.FILE_OPERATIONS]: ['Copy From VM', 'Upload and Copy Files'],
 };
 
-const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnect Mock', 'MySQL', STRINGS.FILE_OPERATIONS];
+const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnect Mock', 'MySQL', STRINGS.FILE_OPERATIONS, STRINGS.GENERATE_CERT];
 let selectedCategory = null;
 
 let currentIPs = [];
@@ -341,6 +342,11 @@ function renderCategories() {
 
 // Toggle active category and render its actions
 function toggleCategory(cat) {
+  // Special single-click action: open certificate generator
+  if (cat === STRINGS.GENERATE_CERT) {
+    window.open('http://172.27.132.71:8080/', '_blank');
+    return;
+  }
   if (selectedCategory === cat) {
     selectedCategory = null;
     actionsEl.innerHTML = '';
