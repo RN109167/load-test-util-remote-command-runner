@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, jsonify, current_app
+from flask import redirect, url_for
 import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -14,6 +15,12 @@ job_manager = JobManager()
 @bp.route("/")
 def index():
     return render_template("index.html")
+
+
+# Provide a favicon route to avoid 404s when browsers request /favicon.ico
+@bp.route("/favicon.ico")
+def favicon():
+    return redirect(url_for('static', filename='favicon.svg'))
 
 
 def _valid_ipv4(ip: str) -> bool:

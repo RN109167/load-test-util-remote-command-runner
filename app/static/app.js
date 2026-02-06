@@ -22,7 +22,7 @@ const STRINGS = {
   NETWORK_ERROR_PREFIX: 'Network error: ',
   NO_FILE_SELECTED: 'No file selected',
   FILE_OPERATIONS: 'File Operations',
-  GENERATE_CERT: 'Generate Certificate',
+  GENERATE_CERT: 'Generate SSL Certificate',
 };
 
 // Shortcut command definitions: grouped actions the user can run remotely
