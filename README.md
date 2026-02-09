@@ -124,7 +124,9 @@ A simple web app to run shell commands across multiple hosts and perform file op
 
 ---
 
-Need enhancements or docs updates? Contributions welcome. Keep changes small and focused to avoid impacting functionality.# Remote Command Runner
+Need enhancements or docs updates? Contributions welcome. Keep changes small and focused to avoid impacting functionality.
+
+# OpsRunner
 
 Flask + Vanilla JS tool to run shell commands across multiple VMs via SSH and show per-host results.
 
