@@ -528,30 +528,49 @@ copyCancelBtn && copyCancelBtn.addEventListener('click', () => {
 
 copyForm && copyForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  // Close the dialog immediately on submit
-  copyModal.classList.add('hidden');
+  // Reset banners and clear previous inline errors
   copyError.classList.add('hidden');
+  copyError.textContent = '';
   formSuccess && formSuccess.classList.add('hidden');
   clearBannerTimer(successTimer);
   clearBannerTimer(errorTimer);
+
   const ips = sanitizeIPs(ipsTextarea.value);
   if (!validateAllIPs(ips)) {
-    // Invalid targets; dialog remains closed
+    // Keep modal open and show inline validation error
+    copyError.textContent = ips.length ? 'Please correct invalid target IPs.' : 'Please provide at least one target IP.';
+    copyError.classList.remove('hidden');
     return;
   }
+
   const srcIp = (srcIpInput?.value || '').trim();
   const srcUser = (srcUserInput?.value || '').trim();
   const srcPass = (srcPassInput?.value || '').trim();
-  const srcPort = Number(srcPortInput?.value || 22);
+  const srcPortVal = (srcPortInput?.value || '22').toString().trim();
+  const srcPort = Number(srcPortVal);
   const srcPath = (srcPathInput?.value || '').trim();
+
   if (!isValidIPv4(srcIp)) {
+    copyError.textContent = 'Please provide a valid source IP.';
+    copyError.classList.remove('hidden');
     return;
   }
   if (!srcUser || !srcPass || !srcPath) {
+    copyError.textContent = 'Source username, password, and file path are required.';
+    copyError.classList.remove('hidden');
     return;
   }
+  if (!Number.isInteger(srcPort) || srcPort < 1 || srcPort > 65535) {
+    copyError.textContent = 'Please provide a valid source port (1-65535).';
+    copyError.classList.remove('hidden');
+    return;
+  }
+
   const confirmed = window.confirm(`Copy '${srcPath}' from ${srcIp} to ${ips.length} host(s)?`);
   if (!confirmed) return;
+
+  // Close modal only after validation passes and user confirms
+  copyModal.classList.add('hidden');
   setDisabledState(true);
   try {
     const payload = {
@@ -568,7 +587,9 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
     });
     const data = await res.json();
     if (!data.ok) {
-      // Surface backend error on the main screen
+      // Surface backend error inline and on the main screen
+      copyError.textContent = data.error || 'Copy failed';
+      copyError.classList.remove('hidden');
       showErrorBanner(data.error || 'Copy failed');
     }
     currentIPs = ips;
@@ -589,7 +610,7 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
       showSuccessBanner(STRINGS.SUCCESS_ALL);
     }
   } catch (err) {
-    // Network error; modal remains closed and error shown on main screen
+    // Network error; keep error visible on main screen
     showErrorBanner(STRINGS.NETWORK_ERROR_PREFIX + err.message);
   } finally {
     setDisabledState(false);
