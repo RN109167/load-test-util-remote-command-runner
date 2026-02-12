@@ -10,12 +10,11 @@ A simple web app to run shell commands across multiple hosts and perform file op
 - Copy a file from a source VM and distribute it to target hosts.
 - Use the Shortcut Hub to trigger common actions (service start/stop/restart, etc.).
 
-### Requirements
-- Python 3 installed on your machine.
-- Target hosts must:
-  - Allow SSH connections.
-  - Support `sudo` with the provided password.
-  - Have the specified `owner` and `group` (if you choose to override ownership).
+### Requirements (Users)
+- A modern web browser.
+- Access to the app URL on the VM where this tool is hosted (e.g., http://<vm-host>:5050). No local installation is needed.
+- Valid SSH credentials (username and password) for the target hosts.
+- Network connectivity from the app VM to the target hosts on the SSH port (default 22).
 
 ### Prerequisites on Target VMs
 - Shell scripts expected by Shortcut Hub:
@@ -36,18 +35,11 @@ A simple web app to run shell commands across multiple hosts and perform file op
 - PATH and shell:
   - Commands run via `/bin/bash -lc` with `cd "$HOME"` to mimic interactive environments.
 
-### Quick Start
-1. Create a virtual environment (recommended) and install dependencies:
-   ```bash
-   python3 -m venv .venv
-   . .venv/bin/activate
-   pip install Flask Paramiko
-   ```
-2. Run the app:
-   ```bash
-   PORT=5050 "$PWD"/.venv/bin/python main.py
-   ```
-3. Open the app in your browser: http://localhost:5050
+### Getting Started (Users)
+1. Open the app URL in your browser (e.g., http://<vm-host>:5050).
+2. Enter target IPs (one per line) and a command, or use the Shortcut Hub.
+3. For file operations, provide destination directory (optional), owner/group (optional), and choose overwrite/permissions as needed.
+4. Review per-host results in the table; failed hosts will show errors.
 
 ### Using the App
 - Enter target IPs (one per line) and a command, or use the Shortcut Hub.
@@ -65,6 +57,11 @@ A simple web app to run shell commands across multiple hosts and perform file op
 - Network issues: ensure SSH connectivity and firewall rules permit access.
 
 ## For Developers
+
+### Developer Setup
+- Python 3 installed on your development machine.
+- Recommended: use a virtual environment and install dependencies locally.
+- Start the app on the hosting VM and expose the HTTP port to users.
 
 ### Project Structure
 - `main.py`: App entrypoint and Flask setup.
