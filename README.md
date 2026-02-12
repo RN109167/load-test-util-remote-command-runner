@@ -15,6 +15,7 @@ A simple web app to run shell commands across multiple hosts and perform file op
 - Access to the app URL on the VM where this tool is hosted (e.g., http://<vm-host>:5050). No local installation is needed.
 - Valid SSH credentials (username and password) for the target hosts.
 - Network connectivity from the app VM to the target hosts on the SSH port (default 22).
+- Note: Credentials are centrally stored for Onelink VMs on the server. If the credentials change on the hosts, operations will fail until the server configuration (`SSH_USERNAME`/`SSH_PASSWORD`) is updated and the app is restarted.
 
 ### Prerequisites on Target VMs
 - Shell scripts expected by Shortcut Hub:
@@ -110,6 +111,7 @@ A simple web app to run shell commands across multiple hosts and perform file op
 - `sudo` is invoked via `echo <password> | sudo -S ...`. Use caution and consider host-level policies (NOPASSWD) in production.
 - SSH host key verification and key-based auth can be added for stricter security.
 - Overwrite behavior (`mv -f`) will replace existing files — ensure this is acceptable.
+- Credential management: the app currently uses a single, server-configured username/password for Onelink VMs; per-host credential overrides are not supported. If credentials rotate, update environment variables and restart the app.
 
 ### Troubleshooting
 - Check terminal output for stack traces if the app fails to start.
