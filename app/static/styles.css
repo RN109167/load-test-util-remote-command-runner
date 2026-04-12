@@ -92,3 +92,8 @@ footer { padding: 24px; color: #94a3b8; }
 .ip-row .remove-ip-btn { background: transparent; color: #ef4444; border: 1px solid #7f1d1d; border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; flex-shrink: 0; }
 .ip-row .remove-ip-btn:hover { background: rgba(127,29,29,0.25); }
 
+/* NTP warnings */
+.ntp-warnings { max-height: 320px; overflow-y: auto; }
+.ntp-warning-item { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.35); border-radius: 8px; margin-bottom: 8px; font-size: 13px; color: #fde68a; }
+.ntp-warning-icon { flex-shrink: 0; font-size: 16px; }
+

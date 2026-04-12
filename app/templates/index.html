@@ -185,6 +185,52 @@
     </div>
   </div>
 
+  <!-- NTP Time Sync Modal -->
+  <div id="ntp-modal" class="modal hidden">
+    <div class="modal-content" style="width: min(560px, 92vw)">
+      <h3>NTP Time Synchronisation</h3>
+      <p class="muted" style="margin:0 0 12px; font-size:13px">
+        Configure an NTP server and synchronise all client VMs (from the IP Addresses input) to it.
+      </p>
+      <form id="ntp-form">
+        <div class="grid">
+          <label>
+            NTP Server IP
+            <input type="text" id="ntp-server-ip" placeholder="192.168.1.100" />
+          </label>
+          <label>
+            SSH Username
+            <input type="text" id="ntp-server-user" placeholder="user" />
+          </label>
+          <label>
+            SSH Password
+            <input type="password" id="ntp-server-pass" placeholder="••••••" />
+          </label>
+        </div>
+        <div class="ip-creds-hint" style="margin-top:12px">
+          &#x1f6c8; Client VMs are taken from the <strong>IP Addresses</strong> field on the main page (outside this form). The server will be configured as a standalone local stratum clock.
+        </div>
+        <div class="actions">
+          <button type="button" id="ntp-cancel">Cancel</button>
+          <button type="submit" id="ntp-submit">Check &amp; Configure</button>
+        </div>
+        <div id="ntp-error" class="error hidden"></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- NTP Preflight Warnings Dialog -->
+  <div id="ntp-warnings-modal" class="modal hidden">
+    <div class="modal-content" style="width: min(640px, 92vw)">
+      <h3>NTP Pre-flight Warnings</h3>
+      <div id="ntp-warnings-list" class="ntp-warnings"></div>
+      <div class="actions" style="margin-top:16px">
+        <button type="button" id="ntp-warnings-cancel">Cancel</button>
+        <button type="button" id="ntp-warnings-proceed">Proceed Anyway</button>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <small>Ensure you trust the target hosts. Manage known hosts in production.</small>
   </footer>

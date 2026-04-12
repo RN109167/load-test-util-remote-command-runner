@@ -63,14 +63,15 @@ const SHORTCUTS = {
     Stop: 'sh stop-nconnectmock.sh',
   },
   'MySQL': {
-    Start: 'echo palmedia1 | sudo -S systemctl start mysqld',
-    Stop: 'echo palmedia1 | sudo -S systemctl stop mysqld',
-    Restart: 'echo palmedia1 | sudo -S systemctl restart mysqld',
+    Start: 'SVC=$(grep -qiE "debian|ubuntu" /etc/os-release && echo mysql || echo mysqld); echo palmedia1 | sudo -S systemctl start $SVC',
+    Stop: 'SVC=$(grep -qiE "debian|ubuntu" /etc/os-release && echo mysql || echo mysqld); echo palmedia1 | sudo -S systemctl stop $SVC',
+    Restart: 'SVC=$(grep -qiE "debian|ubuntu" /etc/os-release && echo mysql || echo mysqld); echo palmedia1 | sudo -S systemctl restart $SVC',
   },
   [STRINGS.FILE_OPERATIONS]: ['Copy From VM', 'Upload and Copy Files'],
+  'NTP Time Sync': ['Configure NTP'],
 };
 
-const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnect Mock', 'MySQL', STRINGS.FILE_OPERATIONS, STRINGS.GENERATE_CERT];
+const CATEGORY_ORDER = ['Concentrator', 'Appserver', 'nConnect-Adapter', 'Unload', 'nConnect Mock', 'MySQL', STRINGS.FILE_OPERATIONS, 'NTP Time Sync', STRINGS.GENERATE_CERT];
 let selectedCategory = null;
 
 let currentIPs = [];
@@ -563,6 +564,13 @@ function renderActions(cat) {
         }
         return;
       }
+      if (cat === 'NTP Time Sync') {
+        const ntpModal = document.getElementById('ntp-modal');
+        const ntpError = document.getElementById('ntp-error');
+        if (ntpError) ntpError.classList.add('hidden');
+        if (ntpModal) ntpModal.classList.remove('hidden');
+        return;
+      }
       const command = SHORTCUTS[cat][label];
       await triggerCommand(`${label} ${cat}`, command);
     });
@@ -921,4 +929,170 @@ async function pollJob(jobId, command) {
   }
   // Job completed; re-enable controls
   setDisabledState(false);
+}
+
+// === NTP Time Sync ===
+const ntpModal = document.getElementById('ntp-modal');
+const ntpForm = document.getElementById('ntp-form');
+const ntpError = document.getElementById('ntp-error');
+const ntpCancelBtn = document.getElementById('ntp-cancel');
+const ntpServerIpInput = document.getElementById('ntp-server-ip');
+const ntpServerUserInput = document.getElementById('ntp-server-user');
+const ntpServerPassInput = document.getElementById('ntp-server-pass');
+const ntpWarningsModal = document.getElementById('ntp-warnings-modal');
+const ntpWarningsList = document.getElementById('ntp-warnings-list');
+const ntpWarningsCancelBtn = document.getElementById('ntp-warnings-cancel');
+const ntpWarningsProceedBtn = document.getElementById('ntp-warnings-proceed');
+
+// Stash pending NTP config so "Proceed Anyway" can continue
+let pendingNtpPayload = null;
+
+ntpCancelBtn && ntpCancelBtn.addEventListener('click', () => {
+  ntpModal && ntpModal.classList.add('hidden');
+  ntpForm && ntpForm.reset();
+  ntpError && ntpError.classList.add('hidden');
+});
+
+ntpWarningsCancelBtn && ntpWarningsCancelBtn.addEventListener('click', () => {
+  ntpWarningsModal && ntpWarningsModal.classList.add('hidden');
+  pendingNtpPayload = null;
+  setDisabledState(false);
+});
+
+ntpWarningsProceedBtn && ntpWarningsProceedBtn.addEventListener('click', async () => {
+  ntpWarningsModal && ntpWarningsModal.classList.add('hidden');
+  if (pendingNtpPayload) {
+    await executeNtpConfigure(pendingNtpPayload);
+    pendingNtpPayload = null;
+  }
+});
+
+ntpForm && ntpForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  ntpError && ntpError.classList.add('hidden');
+  formSuccess && formSuccess.classList.add('hidden');
+  clearBannerTimer(successTimer);
+  clearBannerTimer(errorTimer);
+
+  const serverIp = (ntpServerIpInput?.value || '').trim();
+  const serverUser = (ntpServerUserInput?.value || '').trim();
+  const serverPass = (ntpServerPassInput?.value || '').trim();
+
+  if (!isValidIPv4(serverIp)) {
+    ntpError.textContent = 'Enter a valid NTP server IP address.';
+    ntpError.classList.remove('hidden');
+    return;
+  }
+  if (!serverUser || !serverPass) {
+    ntpError.textContent = 'NTP server SSH credentials are required.';
+    ntpError.classList.remove('hidden');
+    return;
+  }
+
+  const entries = getIPEntries();
+  const clientIps = entries.map(e => e.ip);
+  if (!clientIps.length || !validateAllIPs(clientIps)) {
+    ntpError.textContent = 'Provide valid client IPs in the IP Addresses input before configuring NTP.';
+    ntpError.classList.remove('hidden');
+    return;
+  }
+
+  // Close modal and show busy state
+  ntpModal.classList.add('hidden');
+  setDisabledState(true);
+
+  // Build per-IP credentials map
+  const ipCredentials = {};
+  if (hasPerIPCreds()) {
+    entries.forEach(e => {
+      if (e.username || e.password) ipCredentials[e.ip] = { username: e.username || '', password: e.password || '' };
+    });
+  }
+
+  const payload = {
+    server_ip: serverIp,
+    server_username: serverUser,
+    server_password: serverPass,
+    client_ips: clientIps,
+    ip_credentials: ipCredentials,
+  };
+
+  try {
+    // Phase 1: Pre-flight checks
+    const pfRes = await fetch('/api/ntp-preflight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const pfData = await pfRes.json();
+    if (!pfData.ok) {
+      showErrorBanner(pfData.error || 'NTP pre-flight check failed');
+      setDisabledState(false);
+      return;
+    }
+
+    const warnings = pfData.warnings || [];
+    if (warnings.length > 0) {
+      // Show warnings dialog and let user decide
+      renderNtpWarnings(warnings);
+      pendingNtpPayload = payload;
+      ntpWarningsModal && ntpWarningsModal.classList.remove('hidden');
+      // Controls stay disabled until user decides
+      return;
+    }
+
+    // No warnings — proceed directly
+    await executeNtpConfigure(payload);
+  } catch (err) {
+    showErrorBanner(STRINGS.NETWORK_ERROR_PREFIX + err.message);
+    setDisabledState(false);
+  }
+});
+
+function renderNtpWarnings(warnings) {
+  if (!ntpWarningsList) return;
+  ntpWarningsList.innerHTML = '';
+  warnings.forEach(w => {
+    const div = document.createElement('div');
+    div.className = 'ntp-warning-item';
+    const icon = w.type === 'existing_ntp_server' ? '⚠️' : w.type === 'server_in_clients' ? 'ℹ️' : '⚠️';
+    div.innerHTML = `<span class="ntp-warning-icon">${icon}</span><span>${escapeAttr(w.message)}</span>`;
+    ntpWarningsList.appendChild(div);
+  });
+}
+
+async function executeNtpConfigure(payload) {
+  try {
+    // Show all IPs (server + clients) in the results table as "configuring"
+    const allIps = [payload.server_ip, ...payload.client_ips.filter(ip => ip !== payload.server_ip)];
+    currentIPs = allIps;
+    renderTable(allIps, { statuses: Object.fromEntries(allIps.map(ip => [ip, 'configuring'])) });
+
+    const res = await fetch('/api/ntp-configure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      showErrorBanner(data.error || 'NTP configuration failed');
+      setDisabledState(false);
+      return;
+    }
+
+    // Render results
+    renderTable(allIps, { statuses: data.statuses || {}, results: data.results, completed: data.completed });
+
+    const allOk = allIps.every(ip => (data.statuses || {})[ip] === 'completed');
+    if (allOk) {
+      showSuccessBanner('NTP synchronisation configured successfully on all hosts.');
+      ntpForm && ntpForm.reset();
+    } else {
+      showErrorBanner('NTP configuration completed with errors on some hosts. Review results.');
+    }
+  } catch (err) {
+    showErrorBanner(STRINGS.NETWORK_ERROR_PREFIX + err.message);
+  } finally {
+    setDisabledState(false);
+  }
 }

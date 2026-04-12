@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, jsonify, current_app
 from flask import redirect, url_for
 import re
+import json
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
@@ -492,4 +493,449 @@ def api_copy_from_vm():
         "results": results,
         "statuses": statuses,
         "filename": basename,
+    })
+
+
+# ---------------------------------------------------------------------------
+# NTP Time Synchronisation
+# ---------------------------------------------------------------------------
+
+def _detect_distro(host, port, username, password, timeout):
+    """Detect OS family: 'rhel' or 'debian'. Returns tuple (family, raw_id)."""
+    res = execute_command_on_host(
+        host=host, port=port, username=username, password=password,
+        private_key=None,
+        command='cat /etc/os-release 2>/dev/null | grep "^ID=" | head -1',
+        timeout=timeout,
+    )
+    raw = (res.get("stdout") or "").strip().lower()
+    # ID=rhel, ID=centos, ID=rocky, ID=fedora, ID=debian, ID=ubuntu …
+    if any(d in raw for d in ("rhel", "centos", "rocky", "fedora", "ol")):
+        return "rhel", raw
+    if any(d in raw for d in ("debian", "ubuntu", "mint")):
+        return "debian", raw
+    # Fallback: try rpm vs dpkg
+    rpm_check = execute_command_on_host(
+        host=host, port=port, username=username, password=password,
+        private_key=None, command="which rpm >/dev/null 2>&1 && echo rpm",
+        timeout=timeout,
+    )
+    if "rpm" in (rpm_check.get("stdout") or ""):
+        return "rhel", raw
+    return "debian", raw
+
+
+def _detect_ntp_service(host, port, username, password, timeout):
+    """Detect which NTP daemon is installed. Returns 'chrony', 'ntp', or None."""
+    res = execute_command_on_host(
+        host=host, port=port, username=username, password=password,
+        private_key=None,
+        command="which chronyd >/dev/null 2>&1 && echo chrony || (which ntpd >/dev/null 2>&1 && echo ntp) || echo none",
+        timeout=timeout,
+    )
+    out = (res.get("stdout") or "").strip()
+    if "chrony" in out:
+        return "chrony"
+    if "ntp" in out:
+        return "ntp"
+    return None
+
+
+def _is_ntp_server(host, port, username, password, timeout, ntp_svc):
+    """Check if the host is configured as an NTP server (has 'allow' directive)."""
+    if ntp_svc == "chrony":
+        res = execute_command_on_host(
+            host=host, port=port, username=username, password=password,
+            private_key=None,
+            command="grep -E '^\\s*allow' /etc/chrony.conf /etc/chrony/chrony.conf 2>/dev/null || true",
+            timeout=timeout,
+        )
+    else:
+        res = execute_command_on_host(
+            host=host, port=port, username=username, password=password,
+            private_key=None,
+            command="grep -E '^\\s*restrict.*nomodify' /etc/ntp.conf 2>/dev/null | grep -v '127\\.' || true",
+            timeout=timeout,
+        )
+    out = (res.get("stdout") or "").strip()
+    return len(out) > 0
+
+
+def _get_current_sources(host, port, username, password, timeout, ntp_svc):
+    """Return current NTP sources configured on the host."""
+    if ntp_svc == "chrony":
+        res = execute_command_on_host(
+            host=host, port=port, username=username, password=password,
+            private_key=None,
+            command="chronyc sources -n 2>/dev/null || grep -E '^\\s*(server|pool)' /etc/chrony.conf /etc/chrony/chrony.conf 2>/dev/null || true",
+            timeout=timeout,
+        )
+    else:
+        res = execute_command_on_host(
+            host=host, port=port, username=username, password=password,
+            private_key=None,
+            command="ntpq -p 2>/dev/null || grep -E '^\\s*(server|pool)' /etc/ntp.conf 2>/dev/null || true",
+            timeout=timeout,
+        )
+    return (res.get("stdout") or "").strip()
+
+
+@bp.route("/api/ntp-preflight", methods=["POST"])
+def api_ntp_preflight():
+    """Pre-flight check: inspect NTP status on the designated server and all client IPs."""
+    data = request.get_json(silent=True) or {}
+    server_ip = (data.get("server_ip") or "").strip()
+    server_username = (data.get("server_username") or "").strip()
+    server_password = (data.get("server_password") or "").strip()
+    client_ips = data.get("client_ips") or []
+    ip_credentials = data.get("ip_credentials") or {}
+
+    if not _valid_ipv4(server_ip):
+        return jsonify({"ok": False, "error": "Invalid NTP server IP address"}), 400
+    if not server_username or not server_password:
+        return jsonify({"ok": False, "error": "NTP server credentials are required"}), 400
+    if not client_ips:
+        return jsonify({"ok": False, "error": "Provide at least one client IP in the IP Addresses input"}), 400
+    invalid = [ip for ip in client_ips if not _valid_ipv4(ip)]
+    if invalid:
+        return jsonify({"ok": False, "error": f"Invalid client IPs: {', '.join(invalid)}"}), 400
+
+    default_username = current_app.config.get("SSH_USERNAME", "user")
+    default_password = current_app.config.get("SSH_PASSWORD", "palmedia1")
+    port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
+    timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 30))
+
+    def _client_creds(ip):
+        creds = ip_credentials.get(ip) if isinstance(ip_credentials, dict) else None
+        if creds and isinstance(creds, dict):
+            u = (creds.get("username") or "").strip()
+            p = (creds.get("password") or "").strip()
+            return u or default_username, p or default_password
+        return default_username, default_password
+
+    warnings = []
+
+    # Check if NTP server IP appears in client list
+    if server_ip in client_ips:
+        warnings.append({
+            "ip": server_ip,
+            "type": "server_in_clients",
+            "message": f"{server_ip} is listed as both the NTP server and a client. It will be skipped as a client.",
+        })
+
+    # Check NTP server reachability and detect distro/service
+    try:
+        srv_distro, _ = _detect_distro(server_ip, port, server_username, server_password, timeout)
+        srv_ntp_svc = _detect_ntp_service(server_ip, port, server_username, server_password, timeout)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Cannot reach NTP server {server_ip}: {e}"}), 500
+
+    # Check each client in parallel
+    max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
+    client_info = {}
+
+    def check_client(ip):
+        info = {"ip": ip, "reachable": False, "distro": None, "ntp_svc": None,
+                "is_server": False, "current_sources": ""}
+        try:
+            c_user, c_pass = _client_creds(ip)
+            info["distro"], _ = _detect_distro(ip, port, c_user, c_pass, timeout)
+            info["ntp_svc"] = _detect_ntp_service(ip, port, c_user, c_pass, timeout)
+            info["reachable"] = True
+            if info["ntp_svc"]:
+                info["is_server"] = _is_ntp_server(ip, port, c_user, c_pass, timeout, info["ntp_svc"])
+                info["current_sources"] = _get_current_sources(ip, port, c_user, c_pass, timeout, info["ntp_svc"])
+        except Exception as e:
+            info["error"] = str(e)
+        return info
+
+    # Skip server IP from client checks
+    clients_to_check = [ip for ip in client_ips if ip != server_ip]
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = {ex.submit(check_client, ip): ip for ip in clients_to_check}
+        for fut in as_completed(futures):
+            info = fut.result()
+            client_info[info["ip"]] = info
+
+    # Build warnings from client checks
+    for ip, info in client_info.items():
+        if not info["reachable"]:
+            warnings.append({
+                "ip": ip,
+                "type": "unreachable",
+                "message": f"{ip} is unreachable: {info.get('error', 'Unknown error')}",
+            })
+            continue
+        if info["is_server"]:
+            warnings.append({
+                "ip": ip,
+                "type": "existing_ntp_server",
+                "message": f"{ip} is currently configured as an NTP server. Proceeding will reconfigure it as a client.",
+            })
+        if info["current_sources"] and server_ip not in info["current_sources"]:
+            # Has different NTP source(s) configured
+            warnings.append({
+                "ip": ip,
+                "type": "different_source",
+                "message": f"{ip} currently syncs to a different NTP source. It will be reconfigured to use {server_ip}.",
+            })
+
+    return jsonify({
+        "ok": True,
+        "server": {
+            "ip": server_ip,
+            "distro": srv_distro,
+            "ntp_svc": srv_ntp_svc,
+        },
+        "clients": client_info,
+        "warnings": warnings,
+    })
+
+
+@bp.route("/api/ntp-configure", methods=["POST"])
+def api_ntp_configure():
+    """Configure NTP server and clients using chrony (preferred) or ntpd."""
+    data = request.get_json(silent=True) or {}
+    server_ip = (data.get("server_ip") or "").strip()
+    server_username = (data.get("server_username") or "").strip()
+    server_password = (data.get("server_password") or "").strip()
+    client_ips = data.get("client_ips") or []
+    ip_credentials = data.get("ip_credentials") or {}
+    skip_ips = data.get("skip_ips") or []  # IPs user chose to skip
+
+    if not _valid_ipv4(server_ip):
+        return jsonify({"ok": False, "error": "Invalid NTP server IP address"}), 400
+    if not server_username or not server_password:
+        return jsonify({"ok": False, "error": "NTP server credentials are required"}), 400
+
+    default_username = current_app.config.get("SSH_USERNAME", "user")
+    default_password = current_app.config.get("SSH_PASSWORD", "palmedia1")
+    port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
+    timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 30))
+    max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
+
+    def _client_creds(ip):
+        creds = ip_credentials.get(ip) if isinstance(ip_credentials, dict) else None
+        if creds and isinstance(creds, dict):
+            u = (creds.get("username") or "").strip()
+            p = (creds.get("password") or "").strip()
+            return u or default_username, p or default_password
+        return default_username, default_password
+
+    results = {}
+    statuses = {}
+
+    # ---------- Step 1: Configure the NTP Server ----------
+    try:
+        srv_distro, _ = _detect_distro(server_ip, port, server_username, server_password, timeout)
+        srv_ntp_svc = _detect_ntp_service(server_ip, port, server_username, server_password, timeout)
+
+        # Install chrony if no NTP daemon found
+        if not srv_ntp_svc:
+            if srv_distro == "rhel":
+                install_cmd = "echo {p} | sudo -S yum install -y chrony || echo {p} | sudo -S dnf install -y chrony".format(p=server_password)
+            else:
+                install_cmd = "echo {p} | sudo -S apt-get update -qq && echo {p} | sudo -S apt-get install -y chrony".format(p=server_password)
+            res = execute_command_on_host(
+                host=server_ip, port=port, username=server_username,
+                password=server_password, private_key=None,
+                command=install_cmd, timeout=120,
+            )
+            if not res.get("ok"):
+                raise Exception(f"Failed to install chrony: {res.get('stderr') or res.get('stdout')}")
+            srv_ntp_svc = "chrony"
+
+        # Determine config path
+        if srv_ntp_svc == "chrony":
+            conf_path = "/etc/chrony.conf" if srv_distro == "rhel" else "/etc/chrony/chrony.conf"
+            service_name = "chronyd" if srv_distro == "rhel" else "chrony"
+            # Build server config: standalone local stratum, allow all clients
+            server_config_cmd = (
+                f'echo {server_password} | sudo -S cp {conf_path} {conf_path}.bak.$(date +%s) && '
+                f'echo {server_password} | sudo -S bash -c \''
+                f'sed -i "/^\\s*server\\b/d; /^\\s*pool\\b/d" {conf_path} && '
+                f'grep -q "^local stratum" {conf_path} || echo "local stratum 10" >> {conf_path} && '
+                f'grep -q "^allow" {conf_path} || echo "allow all" >> {conf_path}\''
+            )
+        else:
+            # ntpd
+            conf_path = "/etc/ntp.conf"
+            service_name = "ntpd"
+            server_config_cmd = (
+                f'echo {server_password} | sudo -S cp {conf_path} {conf_path}.bak.$(date +%s) && '
+                f'echo {server_password} | sudo -S bash -c \''
+                f'sed -i "/^\\s*server\\b/d; /^\\s*pool\\b/d" {conf_path} && '
+                f'grep -q "^server 127.127.1.0" {conf_path} || echo "server 127.127.1.0" >> {conf_path} && '
+                f'grep -q "^fudge 127.127.1.0 stratum 10" {conf_path} || echo "fudge 127.127.1.0 stratum 10" >> {conf_path}\''
+            )
+
+        res = execute_command_on_host(
+            host=server_ip, port=port, username=server_username,
+            password=server_password, private_key=None,
+            command=server_config_cmd, timeout=timeout,
+        )
+        if not res.get("ok"):
+            raise Exception(f"Config update failed: {res.get('stderr') or res.get('stdout')}")
+
+        # Open firewall
+        if srv_distro == "rhel":
+            fw_cmd = (
+                f'echo {server_password} | sudo -S firewall-cmd --permanent --add-service=ntp 2>/dev/null; '
+                f'echo {server_password} | sudo -S firewall-cmd --reload 2>/dev/null; true'
+            )
+        else:
+            fw_cmd = (
+                f'echo {server_password} | sudo -S ufw allow 123/udp 2>/dev/null; true'
+            )
+        execute_command_on_host(
+            host=server_ip, port=port, username=server_username,
+            password=server_password, private_key=None,
+            command=fw_cmd, timeout=timeout,
+        )
+
+        # Restart and enable NTP service
+        restart_cmd = (
+            f'echo {server_password} | sudo -S systemctl restart {service_name} && '
+            f'echo {server_password} | sudo -S systemctl enable {service_name}'
+        )
+        res = execute_command_on_host(
+            host=server_ip, port=port, username=server_username,
+            password=server_password, private_key=None,
+            command=restart_cmd, timeout=timeout,
+        )
+        if not res.get("ok"):
+            raise Exception(f"Service restart failed: {res.get('stderr') or res.get('stdout')}")
+
+        # Verify
+        if srv_ntp_svc == "chrony":
+            verify_cmd = "chronyc tracking 2>&1"
+        else:
+            verify_cmd = "ntpstat 2>&1 || ntpq -p 2>&1"
+        verify_res = execute_command_on_host(
+            host=server_ip, port=port, username=server_username,
+            password=server_password, private_key=None,
+            command=verify_cmd, timeout=timeout,
+        )
+
+        statuses[server_ip] = "completed"
+        results[server_ip] = {
+            "ok": True,
+            "role": "server",
+            "stdout": f"NTP server configured ({srv_ntp_svc}, {srv_distro}).\n\n{verify_res.get('stdout', '')}",
+            "stderr": verify_res.get("stderr", ""),
+            "exit_code": 0,
+        }
+
+    except Exception as e:
+        statuses[server_ip] = "failed"
+        results[server_ip] = {
+            "ok": False,
+            "role": "server",
+            "error": str(e),
+            "stdout": "",
+            "stderr": str(e),
+            "exit_code": 1,
+        }
+        # If server setup failed, don't configure clients
+        return jsonify({
+            "ok": True,
+            "completed": True,
+            "results": results,
+            "statuses": statuses,
+        })
+
+    # ---------- Step 2: Configure Clients ----------
+    effective_clients = [ip for ip in client_ips if ip != server_ip and ip not in skip_ips]
+
+    def configure_client(ip):
+        try:
+            c_user, c_pass = _client_creds(ip)
+            c_distro, _ = _detect_distro(ip, port, c_user, c_pass, timeout)
+            c_ntp_svc = _detect_ntp_service(ip, port, c_user, c_pass, timeout)
+
+            # Install chrony if no NTP daemon found
+            if not c_ntp_svc:
+                if c_distro == "rhel":
+                    install_cmd = "echo {p} | sudo -S yum install -y chrony || echo {p} | sudo -S dnf install -y chrony".format(p=c_pass)
+                else:
+                    install_cmd = "echo {p} | sudo -S apt-get update -qq && echo {p} | sudo -S apt-get install -y chrony".format(p=c_pass)
+                res = execute_command_on_host(
+                    host=ip, port=port, username=c_user,
+                    password=c_pass, private_key=None,
+                    command=install_cmd, timeout=120,
+                )
+                if not res.get("ok"):
+                    raise Exception(f"Failed to install chrony: {res.get('stderr') or res.get('stdout')}")
+                c_ntp_svc = "chrony"
+
+            if c_ntp_svc == "chrony":
+                c_conf = "/etc/chrony.conf" if c_distro == "rhel" else "/etc/chrony/chrony.conf"
+                c_service = "chronyd" if c_distro == "rhel" else "chrony"
+                client_cmd = (
+                    f'echo {c_pass} | sudo -S cp {c_conf} {c_conf}.bak.$(date +%s) && '
+                    f'echo {c_pass} | sudo -S bash -c \''
+                    f'sed -i "/^\\s*server\\b/d; /^\\s*pool\\b/d; /^\\s*local stratum/d; /^\\s*allow/d" {c_conf} && '
+                    f'echo "server {server_ip} iburst" >> {c_conf}\' && '
+                    f'echo {c_pass} | sudo -S systemctl restart {c_service} && '
+                    f'echo {c_pass} | sudo -S systemctl enable {c_service}'
+                )
+            else:
+                c_conf = "/etc/ntp.conf"
+                c_service = "ntpd"
+                client_cmd = (
+                    f'echo {c_pass} | sudo -S cp {c_conf} {c_conf}.bak.$(date +%s) && '
+                    f'echo {c_pass} | sudo -S bash -c \''
+                    f'sed -i "/^\\s*server\\b/d; /^\\s*pool\\b/d" {c_conf} && '
+                    f'echo "server {server_ip} iburst" >> {c_conf}\' && '
+                    f'echo {c_pass} | sudo -S systemctl restart {c_service} && '
+                    f'echo {c_pass} | sudo -S systemctl enable {c_service}'
+                )
+
+            res = execute_command_on_host(
+                host=ip, port=port, username=c_user, password=c_pass,
+                private_key=None, command=client_cmd, timeout=timeout,
+            )
+            if not res.get("ok"):
+                raise Exception(res.get("stderr") or res.get("stdout") or "Client configuration failed")
+
+            # Verify sync
+            if c_ntp_svc == "chrony":
+                verify_cmd = "chronyc sources -n 2>&1 && echo '---' && chronyc tracking 2>&1"
+            else:
+                verify_cmd = "ntpq -p 2>&1"
+            verify_res = execute_command_on_host(
+                host=ip, port=port, username=c_user, password=c_pass,
+                private_key=None, command=verify_cmd, timeout=timeout,
+            )
+
+            statuses[ip] = "completed"
+            results[ip] = {
+                "ok": True,
+                "role": "client",
+                "stdout": f"Configured as NTP client → {server_ip} ({c_ntp_svc}, {c_distro}).\n\n{verify_res.get('stdout', '')}",
+                "stderr": verify_res.get("stderr", ""),
+                "exit_code": 0,
+            }
+        except Exception as e:
+            statuses[ip] = "failed"
+            results[ip] = {
+                "ok": False,
+                "role": "client",
+                "error": str(e),
+                "stdout": "",
+                "stderr": str(e),
+                "exit_code": 1,
+            }
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = {ex.submit(configure_client, ip): ip for ip in effective_clients}
+        for _ in as_completed(futures):
+            pass
+
+    return jsonify({
+        "ok": True,
+        "completed": True,
+        "results": results,
+        "statuses": statuses,
     })
