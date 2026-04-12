@@ -40,11 +40,13 @@ def _valid_ipv4(ip: str) -> bool:
 def api_execute():
     """Execute a shell command across target hosts.
     Supports sync mode (immediate results) and async mode (pollable job).
+    Accepts optional ip_credentials: { "ip": { "username": "...", "password": "..." } }
     """
     data = request.get_json(silent=True) or {}
     ips = data.get("ips") or []
     command = (data.get("command") or "").strip()
     mode = data.get("mode") or data.get("sync")
+    ip_credentials = data.get("ip_credentials") or {}
 
     # Validation
     errors = []
@@ -61,9 +63,18 @@ def api_execute():
 
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
     timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 30))
-    username = current_app.config.get("SSH_USERNAME", "user")
-    password = current_app.config.get("SSH_PASSWORD", "palmedia1")
+    default_username = current_app.config.get("SSH_USERNAME", "user")
+    default_password = current_app.config.get("SSH_PASSWORD", "palmedia1")
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
+
+    def _creds_for(ip):
+        """Return (username, password) for a given IP, using per-IP overrides or defaults."""
+        creds = ip_credentials.get(ip) if isinstance(ip_credentials, dict) else None
+        if creds and isinstance(creds, dict):
+            u = (creds.get("username") or "").strip()
+            p = (creds.get("password") or "").strip()
+            return u or default_username, p or default_password
+        return default_username, default_password
 
     # Synchronous mode: execute and return results immediately (no polling)
     if mode in (True, "sync", "SYNC", "immediate"):
@@ -74,8 +85,8 @@ def api_execute():
                 execute_command_on_host,
                 host=ip,
                 port=port,
-                username=username,
-                password=password,
+                username=_creds_for(ip)[0],
+                password=_creds_for(ip)[1],
                 private_key=None,
                 command=command,
                 timeout=timeout,
@@ -109,11 +120,12 @@ def api_execute():
     def run_for_ip(ip):
         job_manager.update_status(job_id, ip, "running")
         try:
+            u, p = _creds_for(ip)
             result = execute_command_on_host(
                 host=ip,
                 port=port,
-                username=username,
-                password=password,
+                username=u,
+                password=p,
                 private_key=None,
                 command=command,
                 timeout=timeout,
@@ -207,6 +219,27 @@ def api_upload_copy():
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
     timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 30))
+
+    # Parse optional per-IP credentials
+    ip_credentials = {}
+    ip_creds_raw = (request.form.get("ip_credentials") or "").strip()
+    if ip_creds_raw:
+        try:
+            import json
+            ip_credentials = json.loads(ip_creds_raw)
+            if not isinstance(ip_credentials, dict):
+                ip_credentials = {}
+        except Exception:
+            ip_credentials = {}
+
+    def _creds_for(ip):
+        creds = ip_credentials.get(ip) if isinstance(ip_credentials, dict) else None
+        if creds and isinstance(creds, dict):
+            u = (creds.get("username") or "").strip()
+            p = (creds.get("password") or "").strip()
+            return u or username, p or password
+        return username, password
+
     # Optional destination directory
     dest_dir = (request.form.get("destDir") or "").strip()
     if not dest_dir:
@@ -226,8 +259,9 @@ def api_upload_copy():
 
     def sftp_copy(ip):
         try:
+            ip_user, ip_pass = _creds_for(ip)
             transport = paramiko.Transport((ip, port))
-            transport.connect(username=username, password=password)
+            transport.connect(username=ip_user, password=ip_pass)
             sftp = paramiko.SFTPClient.from_transport(transport)
             try:
                 dest = f"{dest_dir.rstrip('/')}/{filename}"
@@ -235,23 +269,23 @@ def api_upload_copy():
                 tmp_remote = f"/tmp/{uuid.uuid4()}-{filename}"
                 sftp.put(tmp_path, tmp_remote)
                 # Determine owner/group to use (default to SSH username)
-                use_owner = owner or username
-                use_group = group or username
+                use_owner = owner or ip_user
+                use_group = group or ip_user
                 # Validate existence of owner/group on target before applying
                 move_cmd = (
                     f'OWNER="{use_owner}"; GROUP="{use_group}"; '
                     f'id -u "$OWNER" >/dev/null 2>&1 || {{ echo "Owner not found: $OWNER"; exit 200; }}; '
                     f'getent group "$GROUP" >/dev/null 2>&1 || {{ echo "Group not found: $GROUP"; exit 201; }}; '
-                    f'echo {password} | sudo -S mkdir -p "{dest_dir}" && '
-                    f'echo {password} | sudo -S mv -f "{tmp_remote}" "{dest}" && '
-                    f'echo {password} | sudo -S chown "$OWNER":"$GROUP" "{dest}" && '
-                    f'echo {password} | sudo -S chmod 0664 "{dest}"'
+                    f'echo {ip_pass} | sudo -S mkdir -p "{dest_dir}" && '
+                    f'echo {ip_pass} | sudo -S mv -f "{tmp_remote}" "{dest}" && '
+                    f'echo {ip_pass} | sudo -S chown "$OWNER":"$GROUP" "{dest}" && '
+                    f'echo {ip_pass} | sudo -S chmod 0664 "{dest}"'
                 )
                 res = execute_command_on_host(
                     host=ip,
                     port=port,
-                    username=username,
-                    password=password,
+                    username=ip_user,
+                    password=ip_pass,
                     private_key=None,
                     command=move_cmd,
                     timeout=timeout,
@@ -362,6 +396,18 @@ def api_copy_from_vm():
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))
     timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 30))
+
+    # Parse optional per-IP credentials
+    ip_credentials = data.get("ip_credentials") or {}
+
+    def _creds_for(ip):
+        creds = ip_credentials.get(ip) if isinstance(ip_credentials, dict) else None
+        if creds and isinstance(creds, dict):
+            u = (creds.get("username") or "").strip()
+            p = (creds.get("password") or "").strip()
+            return u or username, p or password
+        return username, password
+
     # Basic validation to avoid command injection
     safe_re = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
     if owner and not safe_re.match(owner):
@@ -377,30 +423,31 @@ def api_copy_from_vm():
 
     def sftp_put(ip):
         try:
+            ip_user, ip_pass = _creds_for(ip)
             transport = paramiko.Transport((ip, port))
-            transport.connect(username=username, password=password)
+            transport.connect(username=ip_user, password=ip_pass)
             sftp = paramiko.SFTPClient.from_transport(transport)
             try:
                 dest = f"{dest_dir.rstrip('/')}/{basename}"
                 # Always upload to /tmp first, then move with sudo to destination
                 tmp_remote = f"/tmp/{uuid.uuid4()}-{basename}"
                 sftp.put(tmp_path, tmp_remote)
-                use_owner = owner or username
-                use_group = group or username
+                use_owner = owner or ip_user
+                use_group = group or ip_user
                 move_cmd = (
                     f'OWNER="{use_owner}"; GROUP="{use_group}"; '
                     f'id -u "$OWNER" >/dev/null 2>&1 || {{ echo "Owner not found: $OWNER"; exit 200; }}; '
                     f'getent group "$GROUP" >/dev/null 2>&1 || {{ echo "Group not found: $GROUP"; exit 201; }}; '
-                    f'echo {password} | sudo -S mkdir -p "{dest_dir}" && '
-                    f'echo {password} | sudo -S mv -f "{tmp_remote}" "{dest}" && '
-                    f'echo {password} | sudo -S chown "$OWNER":"$GROUP" "{dest}" && '
-                    f'echo {password} | sudo -S chmod 0664 "{dest}"'
+                    f'echo {ip_pass} | sudo -S mkdir -p "{dest_dir}" && '
+                    f'echo {ip_pass} | sudo -S mv -f "{tmp_remote}" "{dest}" && '
+                    f'echo {ip_pass} | sudo -S chown "$OWNER":"$GROUP" "{dest}" && '
+                    f'echo {ip_pass} | sudo -S chmod 0664 "{dest}"'
                 )
                 res = execute_command_on_host(
                     host=ip,
                     port=port,
-                    username=username,
-                    password=password,
+                    username=ip_user,
+                    password=ip_pass,
                     private_key=None,
                     command=move_cmd,
                     timeout=timeout,

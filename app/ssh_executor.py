@@ -55,8 +55,10 @@ def execute_command_on_host(
             "stderr": err,
             "exit_code": exit_status,
         }
+    except paramiko.AuthenticationException as e:
+        raise RuntimeError(f"Authentication failed for {username}@{host}: {e}")
     except (paramiko.SSHException, socket.error) as e:
-        raise RuntimeError(f"SSH error: {e}")
+        raise RuntimeError(f"SSH error connecting to {host}: {e}")
     finally:
         try:
             client.close()

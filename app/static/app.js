@@ -15,6 +15,17 @@ const ipsClearBtn = document.getElementById('ips-clear-btn');
 const commandInput = document.getElementById('command');
 const runBtn = document.getElementById('run-btn');
 
+// IP entry mode elements
+const modeBulkBtn = document.getElementById('mode-bulk-btn');
+const modeRowBtn = document.getElementById('mode-row-btn');
+const ipBulkMode = document.getElementById('ip-bulk-mode');
+const ipRowMode = document.getElementById('ip-row-mode');
+const ipRowsContainer = document.getElementById('ip-rows-container');
+const addIpRowBtn = document.getElementById('add-ip-row-btn');
+
+// Track current input mode: 'bulk' or 'row'
+let ipInputMode = 'bulk';
+
 // Common string constants (used 3+ times)
 const STRINGS = {
   SUCCESS_ALL: 'All hosts completed successfully.',
@@ -118,6 +129,106 @@ function isValidIPv4(ip) {
   });
 }
 
+// === IP Input Mode Toggle ===
+function switchToMode(mode) {
+  ipInputMode = mode;
+  if (mode === 'bulk') {
+    ipBulkMode && ipBulkMode.classList.remove('hidden');
+    ipRowMode && ipRowMode.classList.add('hidden');
+    modeBulkBtn && modeBulkBtn.classList.add('selected');
+    modeRowBtn && modeRowBtn.classList.remove('selected');
+  } else {
+    ipBulkMode && ipBulkMode.classList.add('hidden');
+    ipRowMode && ipRowMode.classList.remove('hidden');
+    modeBulkBtn && modeBulkBtn.classList.remove('selected');
+    modeRowBtn && modeRowBtn.classList.add('selected');
+    // If switching from bulk and textarea has IPs, migrate them to rows
+    if (ipsTextarea) {
+      const bulkIPs = sanitizeIPs(ipsTextarea.value);
+      if (bulkIPs.length > 0 && ipRowsContainer && ipRowsContainer.children.length === 0) {
+        bulkIPs.forEach(ip => addIPRow(ip, '', ''));
+      }
+    }
+    // Ensure at least one empty row
+    if (ipRowsContainer && ipRowsContainer.children.length === 0) {
+      addIPRow('', '', '');
+    }
+  }
+  updateToolbarState();
+}
+
+modeBulkBtn && modeBulkBtn.addEventListener('click', (e) => { e.preventDefault(); switchToMode('bulk'); });
+modeRowBtn && modeRowBtn.addEventListener('click', (e) => { e.preventDefault(); switchToMode('row'); });
+
+// === Per-IP Row Management ===
+function addIPRow(ip, username, password) {
+  const row = document.createElement('div');
+  row.className = 'ip-row';
+  row.innerHTML =
+    `<input type="text" class="ip-input" placeholder="192.168.1.10" value="${escapeAttr(ip)}" />` +
+    `<input type="text" class="user-input" placeholder="Username" value="${escapeAttr(username)}" />` +
+    `<input type="password" class="pass-input" placeholder="Password" value="${escapeAttr(password)}" />` +
+    `<button type="button" class="remove-ip-btn" title="Remove">✕</button>`;
+  row.querySelector('.remove-ip-btn').addEventListener('click', () => {
+    row.remove();
+    if (ipRowsContainer && ipRowsContainer.children.length === 0) addIPRow('', '', '');
+    updateToolbarState();
+  });
+  // Re-validate on input changes
+  row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', updateToolbarState));
+  ipRowsContainer && ipRowsContainer.appendChild(row);
+}
+
+function escapeAttr(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+addIpRowBtn && addIpRowBtn.addEventListener('click', (e) => {
+  e.preventDefault();
+  addIPRow('', '', '');
+});
+
+/**
+ * Returns a unified list of IP entries from either mode.
+ * Each entry: { ip: string, username?: string, password?: string }
+ * Username/password are omitted when blank (backend falls back to defaults).
+ */
+function getIPEntries() {
+  if (ipInputMode === 'bulk') {
+    return sanitizeIPs(ipsTextarea.value).map(ip => ({ ip }));
+  }
+  const entries = [];
+  if (!ipRowsContainer) return entries;
+  for (const row of ipRowsContainer.children) {
+    const ip = (row.querySelector('.ip-input')?.value || '').trim();
+    const user = (row.querySelector('.user-input')?.value || '').trim();
+    const pass = (row.querySelector('.pass-input')?.value || '').trim();
+    if (!ip) continue;
+    const entry = { ip };
+    if (user) entry.username = user;
+    if (pass) entry.password = pass;
+    entries.push(entry);
+  }
+  return entries;
+}
+
+/** Returns just the IP strings from current entries */
+function getIPList() {
+  return getIPEntries().map(e => e.ip);
+}
+
+/** Returns true if any entry has per-IP creds */
+function hasPerIPCreds() {
+  return getIPEntries().some(e => e.username || e.password);
+}
+
+/** Clears both bulk and row modes */
+function clearAllIPs() {
+  if (ipsTextarea) ipsTextarea.value = '';
+  if (ipRowsContainer) ipRowsContainer.innerHTML = '';
+  if (ipInputMode === 'row') addIPRow('', '', '');
+}
+
 function validateAllIPs(ips) {
   return ips.length > 0 && ips.every(isValidIPv4);
 }
@@ -154,7 +265,9 @@ function renderTable(ips, job) {
     tdOut.appendChild(outWrap);
 
     const tdErr = document.createElement('td');
-    const stderrNode = renderStdout(res?.stderr ?? '');
+    // Show connection/auth errors in stderr column when stderr is empty
+    const errText = (res?.stderr ?? '') || (res?.error ?? '');
+    const stderrNode = renderStdout(errText);
     const errWrap = document.createElement('div');
     errWrap.className = 'stdout-wrap';
     errWrap.appendChild(stderrNode);
@@ -222,16 +335,18 @@ function renderColumnsTable(rows) {
 
 // Validate IPs and enable/disable actions accordingly
 function updateToolbarState() {
-  const ips = sanitizeIPs(ipsTextarea.value);
+  const ips = getIPList();
   const allValid = validateAllIPs(ips);
   setActionsDisabled(!allValid);
   // Enable Run only when IPs valid and command non-empty
   const cmdFilled = (commandInput?.value || '').trim().length > 0;
   if (runBtn) runBtn.disabled = !(allValid && cmdFilled);
 
-  // Disable Clear IPs button when textarea is empty
-  const hasIpsText = (ipsTextarea?.value || '').trim().length > 0;
-  if (ipsClearBtn) ipsClearBtn.disabled = !hasIpsText;
+  // Disable Clear IPs button when no IPs entered in either mode
+  const hasContent = ipInputMode === 'bulk'
+    ? (ipsTextarea?.value || '').trim().length > 0
+    : ips.length > 0;
+  if (ipsClearBtn) ipsClearBtn.disabled = !hasContent;
 
   if (!allValid && ips.length > 0) {
     const invalid = ips.filter(ip => !isValidIPv4(ip));
@@ -246,7 +361,7 @@ function updateToolbarState() {
 // Confirm and start a command across selected IPs
 async function triggerCommand(label, command) {
   formError.classList.add('hidden');
-  const ips = sanitizeIPs(ipsTextarea.value);
+  const ips = getIPList();
   if (!validateAllIPs(ips)) {
     formError.textContent = ips.length ? 'Please correct invalid IPs before running.' : 'Please provide at least one IP address.';
     formError.classList.remove('hidden');
@@ -255,7 +370,7 @@ async function triggerCommand(label, command) {
   }
   const confirmed = window.confirm(`Run "${label}" on ${ips.length} host(s)?`);
   if (!confirmed) return;
-  await startJob(ips, command);
+  await startJob(getIPEntries(), command);
 }
 
 updateToolbarState();
@@ -286,22 +401,83 @@ ipsFileInput && ipsFileInput.addEventListener('change', () => {
   reader.onload = () => {
     try {
       const text = String(reader.result || '');
-      // Split by newline/comma/whitespace and validate IPv4 format
-      const tokens = sanitizeIPs(text);
-      const invalid = tokens.filter(ip => !isValidIPv4(ip));
-      if (!tokens.length || invalid.length) {
-        formError.textContent = 'File must contain valid IPv4s separated by new lines or commas.';
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      if (!lines.length) {
+        formError.textContent = 'File is empty.';
         formError.classList.remove('hidden');
         return;
       }
-      // Fill textarea with one IP per line
-      ipsTextarea.value = tokens.join('\n');
-      if (ipsFileName) {
-        ipsFileName.textContent = `${file.name} — ${tokens.length} IP(s)`;
-        ipsFileName.classList.remove('muted');
+
+      // Detect if CSV has credential columns (header or multi-column data)
+      const hasCredCols = lines.some(l => {
+        const cols = l.split(',').map(c => c.trim());
+        return cols.length >= 2;
+      });
+
+      if (hasCredCols && /\.csv$/i.test(file.name)) {
+        // CSV mode: parse ip,username,password columns
+        let startIdx = 0;
+        const firstCols = lines[0].split(',').map(c => c.trim().toLowerCase());
+        // Skip header row if first column looks like a header
+        if (firstCols[0] === 'ip' || firstCols[0] === 'host' || firstCols[0] === 'address') {
+          startIdx = 1;
+        }
+        const entries = [];
+        const invalidIPs = [];
+        for (let i = startIdx; i < lines.length; i++) {
+          const cols = lines[i].split(',').map(c => c.trim());
+          const ip = cols[0] || '';
+          const user = cols[1] || '';
+          const pass = cols[2] || '';
+          if (!ip) continue;
+          if (!isValidIPv4(ip)) { invalidIPs.push(ip); continue; }
+          entries.push({ ip, username: user, password: pass });
+        }
+        if (invalidIPs.length) {
+          formError.textContent = `Invalid IPs in file: ${invalidIPs.join(', ')}`;
+          formError.classList.remove('hidden');
+          return;
+        }
+        if (!entries.length) {
+          formError.textContent = 'No valid IP entries found in file.';
+          formError.classList.remove('hidden');
+          return;
+        }
+        // Switch to row mode and populate
+        const hasAnyCreds = entries.some(e => e.username || e.password);
+        if (hasAnyCreds) {
+          switchToMode('row');
+          if (ipRowsContainer) ipRowsContainer.innerHTML = '';
+          entries.forEach(e => addIPRow(e.ip, e.username, e.password));
+        } else {
+          // No creds in file — populate bulk textarea
+          ipsTextarea.value = entries.map(e => e.ip).join('\n');
+        }
+        if (ipsFileName) {
+          ipsFileName.textContent = `${file.name} — ${entries.length} IP(s)`;
+          ipsFileName.classList.remove('muted');
+        }
+      } else {
+        // Plain text mode: IPs only (original behavior)
+        const tokens = sanitizeIPs(text);
+        const invalid = tokens.filter(ip => !isValidIPv4(ip));
+        if (!tokens.length || invalid.length) {
+          formError.textContent = 'File must contain valid IPv4s separated by new lines or commas.';
+          formError.classList.remove('hidden');
+          return;
+        }
+        if (ipInputMode === 'row') {
+          if (ipRowsContainer) ipRowsContainer.innerHTML = '';
+          tokens.forEach(ip => addIPRow(ip, '', ''));
+        } else {
+          ipsTextarea.value = tokens.join('\n');
+        }
+        if (ipsFileName) {
+          ipsFileName.textContent = `${file.name} — ${tokens.length} IP(s)`;
+          ipsFileName.classList.remove('muted');
+        }
       }
       updateToolbarState();
-      // Reset file input to allow re-selecting the same file triggering 'change'
       ipsFileInput.value = '';
     } catch (err) {
       formError.textContent = 'Unable to parse IP file.';
@@ -315,13 +491,12 @@ ipsFileInput && ipsFileInput.addEventListener('change', () => {
   reader.readAsText(file);
 });
 
-// Clear IPs button: empties the textarea and resets state
+// Clear IPs button: empties both modes and resets state
 ipsClearBtn && ipsClearBtn.addEventListener('click', (e) => {
   e.preventDefault();
   formError.classList.add('hidden');
-  ipsTextarea.value = '';
+  clearAllIPs();
   if (ipsFileName) { ipsFileName.textContent = STRINGS.NO_FILE_SELECTED; ipsFileName.classList.add('muted'); }
-  // Clear file input so re-uploading the same file triggers 'change'
   if (ipsFileInput) ipsFileInput.value = '';
   updateToolbarState();
 });
@@ -369,7 +544,7 @@ function renderActions(cat) {
     btn.type = 'button';
     btn.className = 'action-btn';
     // Disable until IPs valid
-    const ips = sanitizeIPs(ipsTextarea.value);
+    const ips = getIPList();
     btn.disabled = !validateAllIPs(ips);
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -448,14 +623,13 @@ uploadForm && uploadForm.addEventListener('submit', async (e) => {
   // Also stop any fade timers
   clearBannerTimer(successTimer);
   clearBannerTimer(errorTimer);
-  const ips = sanitizeIPs(ipsTextarea.value);
+  const entries = getIPEntries();
+  const ips = entries.map(e => e.ip);
   if (!validateAllIPs(ips)) {
-    // Keep processing status in results; dialog remains closed
     return;
   }
   const file = uploadFileInput && uploadFileInput.files && uploadFileInput.files[0];
   if (!file) {
-    // No file selected; dialog remains closed
     return;
   }
   const destDir = (uploadDestInput?.value || '').trim();
@@ -469,6 +643,14 @@ uploadForm && uploadForm.addEventListener('submit', async (e) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('ips', JSON.stringify(ips));
+    // Include per-IP credentials if any
+    if (hasPerIPCreds()) {
+      const credsMap = {};
+      entries.forEach(e => {
+        if (e.username || e.password) credsMap[e.ip] = { username: e.username || '', password: e.password || '' };
+      });
+      formData.append('ip_credentials', JSON.stringify(credsMap));
+    }
     if (destDir) formData.append('destDir', destDir);
     const owner = (uploadOwnerInput?.value || '').trim();
     const group = (uploadGroupInput?.value || '').trim();
@@ -535,7 +717,7 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
   clearBannerTimer(successTimer);
   clearBannerTimer(errorTimer);
 
-  const ips = sanitizeIPs(ipsTextarea.value);
+  const ips = getIPList();
   if (!validateAllIPs(ips)) {
     // Keep modal open and show inline validation error
     copyError.textContent = ips.length ? 'Please correct invalid target IPs.' : 'Please provide at least one target IP.';
@@ -580,6 +762,15 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
       owner: (copyOwnerInput?.value || '').trim(),
       group: (copyGroupInput?.value || '').trim(),
     };
+    // Include per-IP credentials if any
+    const entries = getIPEntries();
+    if (hasPerIPCreds()) {
+      const credsMap = {};
+      entries.forEach(e => {
+        if (e.username || e.password) credsMap[e.ip] = { username: e.username || '', password: e.password || '' };
+      });
+      payload.ip_credentials = credsMap;
+    }
     const res = await fetch('/api/copy-from-vm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -623,9 +814,9 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   formError.classList.add('hidden');
 
-  const ips = sanitizeIPs(ipsTextarea.value);
+  const entries = getIPEntries();
+  const ips = entries.map(e => e.ip);
   const command = (commandInput.value || '').trim();
-  // Use backend to execute
 
   if (!ips.length) {
     formError.textContent = 'Please provide at least one IP address.';
@@ -638,20 +829,30 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
-  await startJob(ips, command);
+  await startJob(entries, command);
 });
 
 // Start a backend job and poll status if needed
-async function startJob(ips, command) {
-  // Disable controls until job completes (or polling finishes)
+// entries: array of { ip, username?, password? }
+async function startJob(entries, command) {
   setDisabledState(true);
   formSuccess && formSuccess.classList.add('hidden');
+  const ips = entries.map(e => e.ip);
   try {
+    const payload = { ips, command };
+    // Include per-IP credentials map if any entry has custom creds
+    const hasCreds = entries.some(e => e.username || e.password);
+    if (hasCreds) {
+      const credsMap = {};
+      entries.forEach(e => {
+        if (e.username || e.password) credsMap[e.ip] = { username: e.username || '', password: e.password || '' };
+      });
+      payload.ip_credentials = credsMap;
+    }
     const res = await fetch('/api/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // Default to async execution; backend returns a jobId and UI polls
-      body: JSON.stringify({ ips, command }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (!data.ok) {
@@ -663,12 +864,15 @@ async function startJob(ips, command) {
     currentIPs = ips;
     if (data.results) {
       renderTable(currentIPs, { statuses: data.statuses || {}, results: data.results, completed: data.completed });
+      // Clear command only if all hosts succeeded
+      const allOk = ips.every(ip => (data.statuses || {})[ip] === 'completed');
+      if (allOk && commandInput) commandInput.value = '';
       // Sync execution: results returned immediately; re-enable controls
       setDisabledState(false);
     } else if (data.jobId) {
       // Async execution: show queued state and begin polling
       renderTable(currentIPs, { statuses: Object.fromEntries(ips.map(ip => [ip, 'queued'])) });
-      await pollJob(data.jobId);
+      await pollJob(data.jobId, command);
     }
   } catch (err) {
     formError.textContent = STRINGS.NETWORK_ERROR_PREFIX + err.message;
@@ -690,7 +894,7 @@ function setDisabledState(disabled) {
   }
 }
 
-async function pollJob(jobId) {
+async function pollJob(jobId, command) {
   let completed = false;
   while (!completed) {
     const res = await fetch(`/api/job/${jobId}`);
@@ -703,6 +907,11 @@ async function pollJob(jobId) {
     const job = data.job;
     renderTable(currentIPs, job);
     completed = !!job.completed;
+    if (completed) {
+      // Clear command only if all hosts succeeded
+      const allOk = currentIPs.every(ip => (job.statuses || {})[ip] === 'completed');
+      if (allOk && commandInput) commandInput.value = '';
+    }
     if (!completed) await new Promise(r => setTimeout(r, 1000));
   }
   // Job completed; re-enable controls

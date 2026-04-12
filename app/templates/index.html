@@ -29,19 +29,37 @@
           <span class="busy-text">Working…</span>
         </div>
         <div class="grid">
-          <label>
-            IP Addresses (one per line)
-            <textarea id="ips" rows="6" placeholder="192.168.1.10
+          <div>
+            <div class="ip-mode-toggle">
+              <label>IP Addresses</label>
+              <div class="toggle-group">
+                <button type="button" id="mode-bulk-btn" class="toggle-btn selected">Quick Entry</button>
+                <button type="button" id="mode-row-btn" class="toggle-btn">Per-IP Credentials</button>
+              </div>
+            </div>
+
+            <!-- Bulk mode: original textarea -->
+            <div id="ip-bulk-mode">
+              <textarea id="ips" rows="6" style="width: 812px; height: 168px;" placeholder="192.168.1.10
 192.168.1.11"></textarea>
-            <!-- Upload IPs: accepts .txt/.csv with IPs separated by new lines or commas -->
+            </div>
+
+            <!-- Per-IP row mode -->
+            <div id="ip-row-mode" class="hidden">
+              <div id="ip-rows-container"></div>
+              <button type="button" id="add-ip-row-btn" class="ghost-button" style="margin-top:8px">+ Add IP</button>
+              <div class="ip-creds-hint">&#x1f6c8; Leave Username &amp; Password blank to use default Onelink VM credentials.</div>
+            </div>
+
+            <!-- Shared file picker and clear -->
             <input type="file" id="ips-file" class="file-input-hidden" accept=".txt,.csv,text/plain" />
-            <div class="file-picker">
+            <div class="file-picker" style="margin-top:8px">
               <button type="button" id="ips-file-btn" class="file-button">Load IPs from File</button>
               <span id="ips-file-name" class="file-name muted">No file selected</span>
+              <span class="file-hint">TXT or CSV (ip, username, password)</span>
               <button type="button" id="ips-clear-btn" class="ghost-button" style="margin-left:auto">Clear IPs</button>
             </div>
-            <div class="muted" style="margin-top:6px">Paste IPs above or import from a file. Accepts TXT/CSV with IPv4s separated by commas or new lines.</div>
-          </label>
+          </div>
           <label>
             Command to run
             <input type="text" id="command" placeholder="e.g., hostname | uptime | ./script.sh" />
