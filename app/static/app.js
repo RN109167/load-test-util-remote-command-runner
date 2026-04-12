@@ -588,6 +588,7 @@ const uploadFileBtn = document.getElementById('upload-file-btn');
 const uploadFileName = document.getElementById('upload-file-name');
 const uploadOwnerInput = document.getElementById('upload-owner');
 const uploadGroupInput = document.getElementById('upload-group');
+const uploadPermissionsInput = document.getElementById('upload-permissions');
 
 uploadCancelBtn && uploadCancelBtn.addEventListener('click', () => {
   uploadModal.classList.add('hidden');
@@ -656,6 +657,8 @@ uploadForm && uploadForm.addEventListener('submit', async (e) => {
     const group = (uploadGroupInput?.value || '').trim();
     if (owner) formData.append('owner', owner);
     if (group) formData.append('group', group);
+    const perms = (uploadPermissionsInput?.value || '').trim();
+    if (perms) formData.append('permissions', perms);
     const res = await fetch('/api/upload-copy', { method: 'POST', body: formData });
     const data = await res.json();
     if (!data.ok) {
@@ -701,6 +704,7 @@ const srcPathInput = document.getElementById('src-path');
 const destDirInput = document.getElementById('dest-dir');
 const copyOwnerInput = document.getElementById('copy-owner');
 const copyGroupInput = document.getElementById('copy-group');
+const copyPermissionsInput = document.getElementById('copy-permissions');
 
 // Opening the modal is now triggered by the Shortcut Hub "Copy From VM" button
 
@@ -761,6 +765,7 @@ copyForm && copyForm.addEventListener('submit', async (e) => {
       destDir: (destDirInput?.value || '').trim(),
       owner: (copyOwnerInput?.value || '').trim(),
       group: (copyGroupInput?.value || '').trim(),
+      permissions: (copyPermissionsInput?.value || '').trim(),
     };
     // Include per-IP credentials if any
     const entries = getIPEntries();

@@ -247,12 +247,15 @@ def api_upload_copy():
     # Optional owner/group for chown
     owner = (request.form.get("owner") or "").strip()
     group = (request.form.get("group") or "").strip()
+    permissions = (request.form.get("permissions") or "").strip() or "0664"
     # Basic format validation to avoid command injection
     safe_re = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
     if owner and not safe_re.match(owner):
         return jsonify({"ok": False, "error": "Invalid owner format"}), 400
     if group and not safe_re.match(group):
         return jsonify({"ok": False, "error": "Invalid group format"}), 400
+    if not re.match(r"^[0-7]{3,4}$", permissions):
+        return jsonify({"ok": False, "error": "Invalid permissions format (e.g. 0664, 755)"}), 400
 
     results = {}
     statuses = {}
@@ -279,7 +282,7 @@ def api_upload_copy():
                     f'echo {ip_pass} | sudo -S mkdir -p "{dest_dir}" && '
                     f'echo {ip_pass} | sudo -S mv -f "{tmp_remote}" "{dest}" && '
                     f'echo {ip_pass} | sudo -S chown "$OWNER":"$GROUP" "{dest}" && '
-                    f'echo {ip_pass} | sudo -S chmod 0664 "{dest}"'
+                    f'echo {ip_pass} | sudo -S chmod {permissions} "{dest}"'
                 )
                 res = execute_command_on_host(
                     host=ip,
@@ -339,6 +342,7 @@ def api_copy_from_vm():
     dest_dir = (data.get("destDir") or "").strip()
     owner = (data.get("owner") or "").strip()
     group = (data.get("group") or "").strip()
+    permissions = (data.get("permissions") or "").strip() or "0664"
 
     # Validate targets
     if not ips or not isinstance(ips, list):
@@ -414,6 +418,8 @@ def api_copy_from_vm():
         return jsonify({"ok": False, "error": "Invalid owner format"}), 400
     if group and not safe_re.match(group):
         return jsonify({"ok": False, "error": "Invalid group format"}), 400
+    if not re.match(r"^[0-7]{3,4}$", permissions):
+        return jsonify({"ok": False, "error": "Invalid permissions format (e.g. 0664, 755)"}), 400
 
     if not dest_dir:
         dest_dir = f"/home/{username}"
@@ -441,7 +447,7 @@ def api_copy_from_vm():
                     f'echo {ip_pass} | sudo -S mkdir -p "{dest_dir}" && '
                     f'echo {ip_pass} | sudo -S mv -f "{tmp_remote}" "{dest}" && '
                     f'echo {ip_pass} | sudo -S chown "$OWNER":"$GROUP" "{dest}" && '
-                    f'echo {ip_pass} | sudo -S chmod 0664 "{dest}"'
+                    f'echo {ip_pass} | sudo -S chmod {permissions} "{dest}"'
                 )
                 res = execute_command_on_host(
                     host=ip,

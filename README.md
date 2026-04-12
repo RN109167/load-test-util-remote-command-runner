@@ -53,6 +53,7 @@ Click **Load IPs from File** to import targets from a local file:
 - File Operations:
   - Destination Directory: optional; defaults to `/home/<ssh-username>` when left empty.
   - Owner / Group: optional; if left empty, ownership defaults to the SSH username; if provided, both must exist on each target host.
+  - Permissions: optional; defaults to `0664` (`rw-rw-r--`). Enter a standard octal value (e.g. `755`, `0644`).
   - Overwrite: files are moved with `mv -f`, so existing files at the destination will be replaced.
   - Permissions: files are set to `rw-rw-r--` (`chmod 0664`).
 - Busy indicator shows while operations run; results table updates per host.
@@ -92,8 +93,9 @@ Click **Load IPs from File** to import targets from a local file:
   - All three API endpoints (`/api/execute`, `/api/upload-copy`, `/api/copy-from-vm`) accept an optional `ip_credentials` map: `{ "ip": { "username": "...", "password": "..." } }`.
   - If credentials are provided for a host, they override the server defaults; otherwise the defaults are used.
 - File operations:
-  - Upload to `/tmp` on each target, then `sudo mkdir -p <destDir>`, `sudo mv -f <tmp> <dest>`, `sudo chown <owner>:<group> <dest>`, `sudo chmod 0664 <dest>`.
+  - Upload to `/tmp` on each target, then `sudo mkdir -p <destDir>`, `sudo mv -f <tmp> <dest>`, `sudo chown <owner>:<group> <dest>`, `sudo chmod <permissions> <dest>`.
   - Owner/Group: optional inputs; default to SSH username when empty; validation checks `id -u` and `getent group` per host.
+  - Permissions: optional; defaults to `0664`; validated as a 3-4 digit octal value.
 - Error handling:
   - Authentication failures (`paramiko.AuthenticationException`) are caught with a descriptive message per host.
   - SSH/network errors are reported per host in the results table.
