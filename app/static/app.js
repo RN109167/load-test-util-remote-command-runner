@@ -341,7 +341,11 @@ function updateToolbarState() {
   setActionsDisabled(!allValid);
   // Enable Run only when IPs valid and command non-empty
   const cmdFilled = (commandInput?.value || '').trim().length > 0;
-  if (runBtn) runBtn.disabled = !(allValid && cmdFilled);
+  if (runBtn) {
+    runBtn.disabled = !(allValid && cmdFilled);
+    if (runBtn.disabled) runBtn.dataset.tooltip = allValid ? 'Enter a command to run' : 'Enter valid IP address(es) to enable';
+    else delete runBtn.dataset.tooltip;
+  }
 
   // Disable Clear IPs button when no IPs entered in either mode
   const hasContent = ipInputMode === 'bulk'
@@ -547,6 +551,8 @@ function renderActions(cat) {
     // Disable until IPs valid
     const ips = getIPList();
     btn.disabled = !validateAllIPs(ips);
+    if (btn.disabled) btn.dataset.tooltip = 'Enter valid IP address(es) to enable';
+    else delete btn.dataset.tooltip;
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -580,7 +586,11 @@ function renderActions(cat) {
 
 // Disable/enable all hub and action buttons; toggle the busy indicator
 function setActionsDisabled(disabled) {
-  actionsEl.querySelectorAll('button').forEach(b => b.disabled = disabled);
+  actionsEl.querySelectorAll('button').forEach(b => {
+    b.disabled = disabled;
+    if (disabled) b.dataset.tooltip = 'Enter valid IP address(es) to enable';
+    else delete b.dataset.tooltip;
+  });
 }
 
 renderCategories();

@@ -36,6 +36,20 @@ button:disabled { background: #334155; cursor: not-allowed; }
 .action-btn:hover { background: rgba(37,99,235,0.15); color: #ffffff; border-color: #3b82f6; }
 .action-btn:disabled { background: transparent; color: #9ca3af; border-color: #334155; cursor: not-allowed; }
 
+/* Tooltip for disabled buttons */
+[data-tooltip] { position: relative; }
+[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: #1e293b; color: #e2e8f0; font-size: 12px; padding: 5px 10px; border-radius: 6px;
+  white-space: nowrap; pointer-events: none; z-index: 100; border: 1px solid #334155;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+[data-tooltip]:hover::before {
+  content: ''; position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: #334155; pointer-events: none; z-index: 100;
+}
+
 /* Busy indicator */
 .busy { align-items: center; gap: 8px; margin: 4px 0 10px; color: #cbd5e1; }
 .busy:not(.hidden) { display: inline-flex; }
