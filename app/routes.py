@@ -592,8 +592,6 @@ def api_ntp_preflight():
 
     if not _valid_ipv4(server_ip):
         return jsonify({"ok": False, "error": "Invalid NTP server IP address"}), 400
-    if not server_username or not server_password:
-        return jsonify({"ok": False, "error": "NTP server credentials are required"}), 400
     if not client_ips:
         return jsonify({"ok": False, "error": "Provide at least one client IP in the IP Addresses input"}), 400
     invalid = [ip for ip in client_ips if not _valid_ipv4(ip)]
@@ -602,6 +600,9 @@ def api_ntp_preflight():
 
     default_username = current_app.config.get("SSH_USERNAME", "user")
     default_password = current_app.config.get("SSH_PASSWORD", "palmedia1")
+    # Fall back to default Onelink VM credentials if not provided
+    server_username = server_username or default_username
+    server_password = server_password or default_password
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 30))
 
@@ -706,11 +707,12 @@ def api_ntp_configure():
 
     if not _valid_ipv4(server_ip):
         return jsonify({"ok": False, "error": "Invalid NTP server IP address"}), 400
-    if not server_username or not server_password:
-        return jsonify({"ok": False, "error": "NTP server credentials are required"}), 400
 
     default_username = current_app.config.get("SSH_USERNAME", "user")
     default_password = current_app.config.get("SSH_PASSWORD", "palmedia1")
+    # Fall back to default Onelink VM credentials if not provided
+    server_username = server_username or default_username
+    server_password = server_password or default_password
     port = int(current_app.config.get("SSH_DEFAULT_PORT", 22))
     timeout = int(current_app.config.get("SSH_TIMEOUT_SECONDS", 30))
     max_workers = int(current_app.config.get("MAX_PARALLEL", 30))

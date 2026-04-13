@@ -1,6 +1,6 @@
 # Script Util — Remote Command & File Operations
 
-A web app to run shell commands across multiple hosts and perform file operations (upload and copy, copy from VM). Built with Flask (Python) + Vanilla JS. SSH and SFTP are handled via Paramiko.
+A web app to run shell commands across multiple hosts, perform file operations (upload and copy, copy from VM), and configure NTP time synchronisation. Built with Flask (Python) + Vanilla JS. SSH and SFTP are handled via Paramiko. Supports both RHEL and Debian-based hosts.
 
 ## User Guide
 
@@ -9,6 +9,7 @@ A web app to run shell commands across multiple hosts and perform file operation
 - Upload a local file and place it on target hosts.
 - Copy a file from a source VM and distribute it to target hosts.
 - Use the Shortcut Hub to trigger common actions (service start/stop/restart, etc.).
+- Configure NTP time synchronisation: set up an NTP server and sync client VMs to it.
 
 ### Requirements (Users)
 - A modern web browser.
@@ -23,7 +24,8 @@ A web app to run shell commands across multiple hosts and perform file operation
   - nConnect Mock scripts in home directory: `~/start-nconnectmock.sh`, `~/stop-nconnectmock.sh`.
   - Ensure each is executable (`chmod +x`), and paths match the Shortcut Hub labels.
 - Systemd service names must exist for service shortcuts:
-  - `onelink-concentrator`, `onelink-appserver`, `onelink-nconnect`, `mysqld`.
+  - `onelink-concentrator`, `onelink-appserver`, `onelink-nconnect`.
+  - MySQL: automatically uses `mysqld` on RHEL or `mysql` on Debian (OS auto-detected).
   - Verify with `systemctl status <service>` on each VM.
 - Sudo availability and password:
   - The app invokes `sudo` for directory creation, file moves, ownership and permissions.
@@ -55,10 +57,31 @@ Click **Load IPs from File** to import targets from a local file:
   - Owner / Group: optional; if left empty, ownership defaults to the SSH username; if provided, both must exist on each target host.
   - Permissions: optional; defaults to `0664` (`rw-rw-r--`). Enter a standard octal value (e.g. `755`, `0644`).
   - Overwrite: files are moved with `mv -f`, so existing files at the destination will be replaced.
-  - Permissions: files are set to `rw-rw-r--` (`chmod 0664`).
 - Busy indicator shows while operations run; results table updates per host.
 - Review per-host results in the table; failed hosts will show errors (including authentication failures).
 - The command input is cleared automatically only when **all** hosts complete successfully.
+
+### NTP Time Synchronisation
+The **NTP Time Sync** shortcut configures chrony-based NTP across your VMs:
+
+1. Click **NTP Time Sync** → **Configure NTP** in the Shortcut Hub.
+2. Enter the NTP server IP and its SSH credentials.
+3. Client VMs are taken from the **IP Addresses** input on the main page.
+4. Click **Check & Configure** — the app runs pre-flight checks before making changes.
+
+**Pre-flight checks:**
+- Detects OS (RHEL vs Debian) and NTP daemon (chrony vs ntpd) on each host.
+- Warns if the NTP server IP is also listed as a client (auto-skipped).
+- Warns if any client is already configured as an NTP server — offers to reconfigure it as a client.
+- Warns if any client already syncs to a different NTP source.
+- Warns about unreachable hosts.
+- If warnings are found, a dialog is shown with **Cancel** / **Proceed Anyway**.
+
+**What it configures:**
+- **Server**: Installs chrony if not present, configures as a standalone local stratum 10 clock (`local stratum 10`, `allow all`), opens firewall (firewalld on RHEL, ufw on Debian), restarts and enables the service.
+- **Clients**: Installs chrony if not present, removes existing server/pool directives, adds `server <ntp-server-ip> iburst`, restarts and enables the service.
+- Config files are backed up before modification (timestamped `.bak`).
+- Verification output (`chronyc tracking` / `chronyc sources`) is shown in the results table.
 
 ### Common Errors & Fixes
 - **Invalid IP format**: correct the IPs (IPv4 only).
@@ -105,6 +128,8 @@ Click **Load IPs from File** to import targets from a local file:
 - `GET /api/job/<jobId>` — Poll job status/results.
 - `POST /api/upload-copy` — Multipart form: upload a file and copy to targets. Accepts optional `ip_credentials` (JSON string in form data).
 - `POST /api/copy-from-vm` — JSON: fetch from source VM and distribute to targets. Accepts optional `ip_credentials`.
+- `POST /api/ntp-preflight` — Pre-flight checks for NTP setup: detects OS, NTP daemon, existing server configs, and returns warnings.
+- `POST /api/ntp-configure` — Configure NTP server and clients (chrony/ntpd, RHEL/Debian auto-detected).
 
 ### Configuration (Environment Variables)
 - `PORT` — HTTP port (default: `5050`).

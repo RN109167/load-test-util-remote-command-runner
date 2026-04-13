@@ -116,7 +116,7 @@ function showErrorBanner(text, displayMs = 5000) {
   formError.textContent = text || STRINGS.FAILURE_SOME;
   formError.classList.remove('hidden');
   formError.style.opacity = '1';
-  errorTimer = setTimeout(() => fadeOutBanner(formError), displayMs);
+  if (displayMs > 0) errorTimer = setTimeout(() => fadeOutBanner(formError), displayMs);
 }
 
 function isValidIPv4(ip) {
@@ -983,11 +983,6 @@ ntpForm && ntpForm.addEventListener('submit', async (e) => {
     ntpError.classList.remove('hidden');
     return;
   }
-  if (!serverUser || !serverPass) {
-    ntpError.textContent = 'NTP server SSH credentials are required.';
-    ntpError.classList.remove('hidden');
-    return;
-  }
 
   const entries = getIPEntries();
   const clientIps = entries.map(e => e.ip);
@@ -1026,12 +1021,40 @@ ntpForm && ntpForm.addEventListener('submit', async (e) => {
     });
     const pfData = await pfRes.json();
     if (!pfData.ok) {
-      showErrorBanner(pfData.error || 'NTP pre-flight check failed');
+      // NTP server unreachable — show error banner and render it as failed in results table
+      showErrorBanner(pfData.error || 'NTP pre-flight check failed', 0);
+      const allIps = [serverIp, ...clientIps.filter(ip => ip !== serverIp)];
+      currentIPs = allIps;
+      const failedResults = {};
+      failedResults[serverIp] = { ok: false, stderr: pfData.error || 'Unreachable', exit_code: 1 };
+      renderTable(allIps, {
+        statuses: { [serverIp]: 'failed', ...Object.fromEntries(clientIps.filter(ip => ip !== serverIp).map(ip => [ip, 'skipped'])) },
+        results: failedResults,
+      });
       setDisabledState(false);
       return;
     }
 
     const warnings = pfData.warnings || [];
+    const clients = pfData.clients || {};
+
+    // Build results table showing preflight status for all hosts
+    const allIps = [serverIp, ...clientIps.filter(ip => ip !== serverIp)];
+    currentIPs = allIps;
+    const preflightStatuses = { [serverIp]: 'checked' };
+    const preflightResults = {};
+    preflightResults[serverIp] = { ok: true, stdout: `Server reachable (${pfData.server?.ntp_svc || 'chrony'}, ${pfData.server?.distro || 'unknown'})`, exit_code: 0 };
+    for (const ip of clientIps.filter(i => i !== serverIp)) {
+      const info = clients[ip];
+      if (info && !info.reachable) {
+        preflightStatuses[ip] = 'failed';
+        preflightResults[ip] = { ok: false, stderr: info.error || 'Host unreachable', exit_code: 1 };
+      } else {
+        preflightStatuses[ip] = 'checked';
+      }
+    }
+    renderTable(allIps, { statuses: preflightStatuses, results: preflightResults });
+
     if (warnings.length > 0) {
       // Show warnings dialog and let user decide
       renderNtpWarnings(warnings);
@@ -1075,7 +1098,7 @@ async function executeNtpConfigure(payload) {
     });
     const data = await res.json();
     if (!data.ok) {
-      showErrorBanner(data.error || 'NTP configuration failed');
+      showErrorBanner(data.error || 'NTP configuration failed', 0);
       setDisabledState(false);
       return;
     }
@@ -1088,7 +1111,7 @@ async function executeNtpConfigure(payload) {
       showSuccessBanner('NTP synchronisation configured successfully on all hosts.');
       ntpForm && ntpForm.reset();
     } else {
-      showErrorBanner('NTP configuration completed with errors on some hosts. Review results.');
+      showErrorBanner('NTP configuration completed with errors on some hosts. Review results.', 0);
     }
   } catch (err) {
     showErrorBanner(STRINGS.NETWORK_ERROR_PREFIX + err.message);

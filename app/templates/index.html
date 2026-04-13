@@ -42,6 +42,7 @@
             <div id="ip-bulk-mode">
               <textarea id="ips" rows="6" style="width: 812px; height: 168px;" placeholder="192.168.1.10
 192.168.1.11"></textarea>
+              <div class="ip-creds-hint" style="margin-top:6px">&#x1f6c8; Just enter IPs — default Onelink VM credentials will be used.</div>
             </div>
 
             <!-- Per-IP row mode -->
@@ -199,12 +200,12 @@
             <input type="text" id="ntp-server-ip" placeholder="192.168.1.100" />
           </label>
           <label>
-            SSH Username
-            <input type="text" id="ntp-server-user" placeholder="user" />
+            SSH Username (optional)
+            <input type="text" id="ntp-server-user" placeholder="Default: Onelink VM credentials" />
           </label>
           <label>
-            SSH Password
-            <input type="password" id="ntp-server-pass" placeholder="••••••" />
+            SSH Password (optional)
+            <input type="password" id="ntp-server-pass" placeholder="Default: Onelink VM credentials" />
           </label>
         </div>
         <div class="ip-creds-hint" style="margin-top:12px">
